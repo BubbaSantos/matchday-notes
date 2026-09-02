@@ -58,6 +58,11 @@ const KNOWN_RESCHEDULES: { opponent: string; date: string; from: string; reason:
   },
 ]
 
+// Historical feed spells some club names slightly differently ("St. Johnstone" vs "St Johnstone")
+function normalizeOpponent(name: string): string {
+  return name.replace(/\./g, '').trim().toLowerCase()
+}
+
 function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: string, now: Date): MatchEntry {
   const isHome = f.home === 'Celtic'
   const opponent = isHome ? f.away : f.home
@@ -85,7 +90,9 @@ function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: stri
     entry.opponentScore = isHome ? f.awayScore : f.homeScore
   }
 
-  const reschedule = KNOWN_RESCHEDULES.find((r) => r.opponent === opponent && r.date === f.date)
+  const reschedule = KNOWN_RESCHEDULES.find(
+    (r) => normalizeOpponent(r.opponent) === normalizeOpponent(opponent) && r.date === f.date
+  )
   if (reschedule) {
     entry.rescheduledFrom = { date: reschedule.from, reason: reschedule.reason }
   }
@@ -94,7 +101,7 @@ function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: stri
 }
 
 export async function fetchCelticFixtures(): Promise<MatchEntry[]> {
-  const cacheKey = 'espn_celtic_fixtures_v5'
+  const cacheKey = 'espn_celtic_fixtures_v6'
   const cached = cacheGet<MatchEntry[]>(cacheKey)
   if (cached) return cached
 
@@ -116,10 +123,23 @@ export async function fetchCelticFixtures(): Promise<MatchEntry[]> {
 
   const currentEntries = currentCeltic.map((f, i) => rawToEntry(f, i, 'espn', now))
 
-  // Historical: skip any dates already covered by current season
-  const historicalCeltic = historical.filter(
-    (f) => (f.home === 'Celtic' || f.away === 'Celtic') && !currentDates.has(f.date)
-  )
+  // Historical: skip any dates already covered by current season, and skip fixtures
+  // that were postponed to a new date — the historical feed still lists them under
+  // their original (never-played) date, which would otherwise show up as a phantom
+  // "played" match with no score once that date is in the past.
+  const historicalCeltic = historical.filter((f) => {
+    if (f.home !== 'Celtic' && f.away !== 'Celtic') return false
+    if (currentDates.has(f.date)) return false
+    const opponent = f.home === 'Celtic' ? f.away : f.home
+    if (
+      KNOWN_RESCHEDULES.some(
+        (r) => normalizeOpponent(r.opponent) === normalizeOpponent(opponent) && r.from === f.date
+      )
+    ) {
+      return false
+    }
+    return true
+  })
   const historicalEntries = historicalCeltic.map((f, i) => rawToEntry(f, i, 'ss', now))
 
   const entries = [...currentEntries, ...historicalEntries].sort(
