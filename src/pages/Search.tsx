@@ -96,7 +96,7 @@ export function Search() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search notes…"
-          className="flex-1 border-none outline-none text-sm bg-transparent"
+          className="flex-1 border-none outline-none bg-transparent"
           style={{ color: 'var(--color-ink)', fontFamily: 'inherit' }}
           autoFocus
         />

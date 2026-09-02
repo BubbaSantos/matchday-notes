@@ -52,6 +52,20 @@ html, body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Disable double-tap-to-zoom and restrict touch gestures to panning —
+     browsers that respect touch-action (which covers double-tap-zoom even
+     on iOS Safari) won't zoom from a gesture at all. Pinch-zoom specifically
+     can't be fully blocked on iOS Safari 10+ — Apple ignores both this and
+     the viewport meta tag's user-scalable=no for pinch, as an accessibility
+     override that can't be opted out of. */
+  touch-action: pan-x pan-y;
+}
+
+/* iOS Safari auto-zooms the whole page when a focused input/textarea's
+   font-size is under 16px — keep every text field at exactly 16px so
+   focusing one never triggers that zoom. */
+input, textarea, select {
+  font-size: 16px !important;
 }
 
 #root { min-height: 100vh; }

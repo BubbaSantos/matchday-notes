@@ -287,7 +287,6 @@ function NotesBlock({
             backgroundColor: 'var(--color-surface)',
             borderColor: 'var(--color-border)',
             color: 'var(--color-ink-secondary)',
-            fontSize: '0.975rem',
             padding: '0.6rem 0.75rem',
             fontFamily: 'inherit',
           }}
