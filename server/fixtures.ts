@@ -41,7 +41,7 @@ const STADIUM_MAP: Record<string, string> = {
   'Ayr United': 'Somerset Park',
 }
 
-function normalizeRound(raw: string): string {
+export function normalizeRound(raw: string): string {
   const s = raw.trim().toLowerCase()
   if (s === 'final') return 'Final'
   if (['1/2', 'semi-final', 'semi-finals', 'semifinals'].includes(s)) return 'Semi-final'

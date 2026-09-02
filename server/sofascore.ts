@@ -8,6 +8,7 @@
 // Falls back to unproxied got-scraping (works some of the time locally) if
 // SCRAPERAPI_KEY isn't configured.
 import { gotScraping } from 'got-scraping'
+import { normalizeRound } from './fixtures.js'
 
 const CELTIC_SS_ID = 2352
 const SS_FETCH_ATTEMPTS = 4
@@ -95,6 +96,7 @@ export type SSFixture = {
   penaltyAway?: number
   state: 'pre' | 'post'
   stadiumName?: string
+  round?: string
 }
 
 // Sofascore's tournament.name carries a stage suffix that varies a lot —
@@ -204,6 +206,11 @@ async function ensureSofascorePages(): Promise<void> {
         const penaltyHome = wentToPenalties ? homeScoreRaw?.penalties : undefined
         const penaltyAway = wentToPenalties ? awayScoreRaw?.penalties : undefined
 
+        // Cup/UEFA round (e.g. "Final", "Quarter-final") — not shown for
+        // league fixtures, where "round" isn't a meaningful concept here.
+        const roundName = (e.roundInfo as Record<string, unknown> | undefined)?.name as string | undefined
+        const round = mappedComp !== 'League' && roundName ? normalizeRound(roundName) : undefined
+
         fixtures.push({
           date,
           kickoff,
@@ -215,6 +222,7 @@ async function ensureSofascorePages(): Promise<void> {
           penaltyHome: isFinished ? penaltyHome : undefined,
           penaltyAway: isFinished ? penaltyAway : undefined,
           state: isFinished ? 'post' : 'pre',
+          round,
         })
       }
     }
