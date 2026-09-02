@@ -1,15 +1,16 @@
-# Matchday Diary
+# Celtic FC Match Archive
 
-A personal matchday journal for Celtic — a before/during/after timeline for every
-match across all competitions, with editable notes, voice notes (recorded
-in-browser and auto-transcribed), and full-text search across everything you've
-written.
+A personal match archive for Celtic — a timeline for every match across all
+competitions, with editable notes, voice notes (recorded in-browser and
+auto-transcribed), and full-text search across everything you've written.
+Notes can optionally sync across devices via a lightweight username +
+passcode login.
 
 ## Local development
 
 ```bash
 npm install
-cp .env.example .env   # add OPENAI_API_KEY, SCRAPERAPI_KEY, and SPORTMONKS_TOKEN
+cp .env.example .env   # see .env.example for what each var is for
 npm run dev
 ```
 
@@ -51,11 +52,21 @@ Screen" from Safari's share sheet.
   "After match" table shown on a fixture's own page, not the standing widget.
 - **Voice note transcription**: `server/transcribe.ts` proxies recorded audio
   to OpenAI's Whisper API. Requires `OPENAI_API_KEY`.
-- **Notes & voice notes storage**: entirely client-side, in IndexedDB
-  (`src/lib/notesDb.ts`) — nothing is sent to a database. Keyed by a stable
-  match key (date + competition + opponent) rather than the fixture's `id`,
-  since `id` is derived from array position and can shift if upstream fixture
-  data changes.
+- **Notes & voice notes storage**: two modes, matching whether you're logged
+  in.
+  - Logged out: entirely client-side, in IndexedDB (`src/lib/notesDb.ts`) —
+    nothing leaves the browser.
+  - Logged in: synced via a Redis-backed account (`server/notesStore.ts`,
+    `server/auth.ts`) — username + passcode accounts (scrypt-hashed,
+    stateless HMAC-signed session cookies, no third-party auth provider).
+    Voice note audio is stored as base64 directly in the note record (fine
+    at personal scale; would want real blob storage at any real scale).
+    First login offers a one-time import of any notes already sitting in
+    that browser's IndexedDB (merges, doesn't overwrite).
+
+  Both modes are keyed by a stable match key (date + competition +
+  opponent) rather than the fixture's `id`, since `id` is derived from array
+  position and can shift if upstream fixture data changes.
 
 All server logic lives under `server/`, shared between two runtimes:
 - **Local dev**: wired up as Vite dev-server middleware in `vite.config.ts`.
@@ -73,7 +84,10 @@ For a from-scratch setup elsewhere:
 2. In Vercel, "Add New Project" → import the repo. It auto-detects Vite; no
    build config changes needed.
 3. Add environment variables (Project Settings → Environment Variables):
-   `OPENAI_API_KEY`, `SCRAPERAPI_KEY`, and `SPORTMONKS_TOKEN`.
+   `OPENAI_API_KEY`, `SCRAPERAPI_KEY`, `SPORTMONKS_TOKEN`, and `SESSION_SECRET`.
+   Then install Vercel's free "Upstash for Redis" marketplace integration
+   (Storage tab, or `vercel install upstash/upstash-kv`) and connect it to
+   the project — this auto-provisions `KV_REST_API_URL`/`KV_REST_API_TOKEN`.
 4. Deploy.
 5. On your iPhone, open the deployed URL in Safari → Share → Add to Home
    Screen.
@@ -90,6 +104,8 @@ requests/month, which comfortably covers personal use too, but is time-limited
 - Sofascore-backed features (match events, lineups, historical fixtures) can
   occasionally come back empty on a given request if all retries in `ssFetch`
   fail — this self-heals on the next request/refresh.
-- Voice note audio and transcripts are stored per-browser (IndexedDB) — they
-  don't sync across devices. If you use the app on both desktop and iPhone,
-  each keeps its own notes.
+- If you don't log in, notes stay per-browser (IndexedDB) — using the app on
+  both desktop and iPhone without logging in means each keeps its own notes.
+- Accounts are username + passcode only, no email/recovery — losing the
+  passcode means losing access to that account's synced notes (local
+  IndexedDB notes on a given device are unaffected either way).

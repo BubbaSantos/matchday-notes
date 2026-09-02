@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { fetchCelticFixtures } from '../lib/espn'
 import { fetchCelticStanding, fetchCelticInjuries } from '../lib/sportmonks'
-import { getAllNotes, toVoiceNote } from '../lib/notesDb'
+import * as localNotes from '../lib/notesDb'
+import * as remoteNotes from '../lib/notesApi'
 import { stableMatchKey } from '../lib/matchKey'
-import type { MatchEntry, LeagueStanding } from '../types'
+import { useAuth } from './useAuth'
+import type { MatchEntry, LeagueStanding, VoiceNote } from '../types'
 
 interface FixtureStore {
   fixtures: MatchEntry[]
@@ -14,6 +16,7 @@ interface FixtureStore {
 }
 
 export function useFixtures(): FixtureStore {
+  const { username, loading: authLoading } = useAuth()
   const [fixtures, setFixtures] = useState<MatchEntry[]>([])
   const [standing, setStanding] = useState<LeagueStanding | null>(null)
   const [loading, setLoading] = useState(true)
@@ -21,6 +24,7 @@ export function useFixtures(): FixtureStore {
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
+    if (authLoading) return // wait to know whether to read local or synced notes
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -31,25 +35,33 @@ export function useFixtures(): FixtureStore {
           fetchCelticFixtures(),
           fetchCelticStanding().catch(() => null),
           fetchCelticInjuries().catch(() => []),
-          getAllNotes().catch(() => new Map()),
+          username
+            ? remoteNotes.getAllNotes().catch(() => new Map())
+            : localNotes.getAllNotes().catch(() => new Map()),
         ])
         if (cancelled) return
 
         // Inject standing into upcoming Premiership fixtures, and merge in
-        // locally-persisted notes/voice notes (keyed by a stable match key,
-        // since fixture `id`s can shift when the upstream data changes).
+        // notes/voice notes (keyed by a stable match key, since fixture
+        // `id`s can shift when the upstream data changes) — from the
+        // account if logged in, otherwise this device's local IndexedDB.
         const enriched = allFixtures.map((f) => {
-          const notes = notesMap.get(stableMatchKey(f))
+          const key = stableMatchKey(f)
+          const record = notesMap.get(key)
+          const voiceNotes: VoiceNote[] | undefined = !record
+            ? undefined
+            : username
+              ? (record.voiceNotes as VoiceNote[])
+              : (record.voiceNotes as localNotes.StoredVoiceNote[]).map(localNotes.toVoiceNote)
           return {
             ...f,
             standing:
               f.phase === 'pre' && f.competition === 'Scottish Premiership'
                 ? (stand ?? undefined)
                 : undefined,
-            preNotes: notes?.preNotes || undefined,
-            postNotes: notes?.postNotes || undefined,
-            preVoiceNotes: notes?.preVoiceNotes.map(toVoiceNote),
-            postVoiceNotes: notes?.postVoiceNotes.map(toVoiceNote),
+            notes: record?.notes || undefined,
+            notesPostedAt: record?.notesPostedAt,
+            voiceNotes,
           }
         })
 
@@ -77,7 +89,7 @@ export function useFixtures(): FixtureStore {
     return () => {
       cancelled = true
     }
-  }, [tick])
+  }, [tick, username, authLoading])
 
   return { fixtures, standing, loading, error, refresh: () => setTick((t) => t + 1) }
 }

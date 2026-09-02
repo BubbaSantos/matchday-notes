@@ -1,85 +1,80 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  addVoiceNote,
-  deleteVoiceNote,
-  getNotes,
-  postTextNote,
-  toVoiceNote,
-  type NotesRecord,
-} from '../lib/notesDb'
+import * as localNotes from '../lib/notesDb'
+import * as remoteNotes from '../lib/notesApi'
+import { useAuth } from './useAuth'
 import type { VoiceNote } from '../types'
 
 export interface MatchNotes {
-  preNotes: string
-  preNotesPostedAt?: string
-  postNotes: string
-  postNotesPostedAt?: string
-  preVoiceNotes: VoiceNote[]
-  postVoiceNotes: VoiceNote[]
+  notes: string
+  notesPostedAt?: string
+  voiceNotes: VoiceNote[]
   loading: boolean
-  postPreNotes: (text: string) => void
-  postPostNotes: (text: string) => void
-  saveVoiceNote: (field: 'pre' | 'post', blob: Blob, transcript: string, duration: number) => void
-  removeVoiceNote: (field: 'pre' | 'post', id: string) => void
+  postNotes: (text: string) => void
+  saveVoiceNote: (blob: Blob, transcript: string, duration: number) => void
+  removeVoiceNote: (id: string) => void
 }
 
-function toVoiceNotes(record: NotesRecord) {
-  return {
-    preVoiceNotes: record.preVoiceNotes.map(toVoiceNote),
-    postVoiceNotes: record.postVoiceNotes.map(toVoiceNote),
-  }
+interface LoadedRecord {
+  notes: string
+  notesPostedAt?: string
+  voiceNotes: VoiceNote[]
 }
 
 export function useMatchNotes(matchKey: string | undefined): MatchNotes {
-  const [record, setRecord] = useState<NotesRecord | null>(null)
+  const { username } = useAuth()
+  const [record, setRecord] = useState<LoadedRecord | null>(null)
 
   useEffect(() => {
     if (!matchKey) return
     let cancelled = false
-    getNotes(matchKey).then((r) => { if (!cancelled) setRecord(r) })
+    setRecord(null)
+    async function load() {
+      if (username) {
+        const r = await remoteNotes.getNotes(matchKey!)
+        if (!cancelled) setRecord(r)
+      } else {
+        const r = await localNotes.getNotes(matchKey!)
+        if (!cancelled) setRecord({ notes: r.notes, notesPostedAt: r.notesPostedAt, voiceNotes: r.voiceNotes.map(localNotes.toVoiceNote) })
+      }
+    }
+    load()
     return () => { cancelled = true }
-  }, [matchKey])
+  }, [matchKey, username])
 
-  const postPreNotes = useCallback((text: string) => {
+  const postNotes = useCallback((text: string) => {
     if (!matchKey) return
-    postTextNote(matchKey, 'preNotes', text).then((postedAt) => {
-      setRecord((prev) => prev && { ...prev, preNotes: text, preNotesPostedAt: postedAt })
+    const save = username ? remoteNotes.postTextNote(matchKey, text) : localNotes.postTextNote(matchKey, text)
+    save.then((postedAt) => {
+      setRecord((prev) => prev && { ...prev, notes: text, notesPostedAt: postedAt })
     })
-  }, [matchKey])
+  }, [matchKey, username])
 
-  const postPostNotes = useCallback((text: string) => {
+  const saveVoiceNote = useCallback((blob: Blob, transcript: string, duration: number) => {
     if (!matchKey) return
-    postTextNote(matchKey, 'postNotes', text).then((postedAt) => {
-      setRecord((prev) => prev && { ...prev, postNotes: text, postNotesPostedAt: postedAt })
-    })
-  }, [matchKey])
+    if (username) {
+      remoteNotes.addVoiceNote(matchKey, blob, transcript, duration).then((note) => {
+        setRecord((prev) => prev && { ...prev, voiceNotes: [...prev.voiceNotes, note] })
+      })
+    } else {
+      localNotes.addVoiceNote(matchKey, blob, transcript, duration).then((stored) => {
+        setRecord((prev) => prev && { ...prev, voiceNotes: [...prev.voiceNotes, localNotes.toVoiceNote(stored)] })
+      })
+    }
+  }, [matchKey, username])
 
-  const saveVoiceNote = useCallback((field: 'pre' | 'post', blob: Blob, transcript: string, duration: number) => {
+  const removeVoiceNote = useCallback((id: string) => {
     if (!matchKey) return
-    const key = field === 'pre' ? 'preVoiceNotes' : 'postVoiceNotes'
-    addVoiceNote(matchKey, key, blob, transcript, duration).then((note) => {
-      setRecord((prev) => prev && { ...prev, [key]: [...prev[key], note] })
-    })
-  }, [matchKey])
-
-  const removeVoiceNote = useCallback((field: 'pre' | 'post', id: string) => {
-    if (!matchKey) return
-    const key = field === 'pre' ? 'preVoiceNotes' : 'postVoiceNotes'
-    setRecord((prev) => prev && { ...prev, [key]: prev[key].filter((n) => n.id !== id) })
-    deleteVoiceNote(matchKey, key, id)
-  }, [matchKey])
-
-  const voiceNotes = record ? toVoiceNotes(record) : { preVoiceNotes: [], postVoiceNotes: [] }
+    setRecord((prev) => prev && { ...prev, voiceNotes: prev.voiceNotes.filter((n) => n.id !== id) })
+    if (username) remoteNotes.deleteVoiceNote(matchKey, id)
+    else localNotes.deleteVoiceNote(matchKey, id)
+  }, [matchKey, username])
 
   return {
-    preNotes: record?.preNotes ?? '',
-    preNotesPostedAt: record?.preNotesPostedAt,
-    postNotes: record?.postNotes ?? '',
-    postNotesPostedAt: record?.postNotesPostedAt,
-    ...voiceNotes,
+    notes: record?.notes ?? '',
+    notesPostedAt: record?.notesPostedAt,
+    voiceNotes: record?.voiceNotes ?? [],
     loading: record === null,
-    postPreNotes,
-    postPostNotes,
+    postNotes,
     saveVoiceNote,
     removeVoiceNote,
   }

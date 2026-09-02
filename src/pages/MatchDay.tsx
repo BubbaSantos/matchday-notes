@@ -630,41 +630,22 @@ function NotesTab({
         </Block>
       )}
 
-      <Block title="Pre-match notes">
+      <Block title="Notes">
         <NotesBlock
-          text={notes.preNotes}
-          postedAt={notes.preNotesPostedAt}
-          placeholder="How are you feeling about this one…"
-          onPost={notes.postPreNotes}
+          text={notes.notes}
+          postedAt={notes.notesPostedAt}
+          placeholder={isPast ? 'What did you make of it…' : 'How are you feeling about this one…'}
+          onPost={notes.postNotes}
         />
         <div className="mt-2.5">
-          <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('pre', blob, transcript, duration)} />
+          <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote(blob, transcript, duration)} />
         </div>
-        {notes.preVoiceNotes.length > 0 && (
+        {notes.voiceNotes.length > 0 && (
           <div className="mt-2.5">
-            <VoiceNoteList notes={notes.preVoiceNotes} onDelete={(id) => notes.removeVoiceNote('pre', id)} />
+            <VoiceNoteList notes={notes.voiceNotes} onDelete={(id) => notes.removeVoiceNote(id)} />
           </div>
         )}
       </Block>
-
-      {isPast && (
-        <Block title="Post-match notes">
-          <NotesBlock
-            text={notes.postNotes}
-            postedAt={notes.postNotesPostedAt}
-            placeholder="What did you make of it…"
-            onPost={notes.postPostNotes}
-          />
-          <div className="mt-2.5">
-            <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('post', blob, transcript, duration)} />
-          </div>
-          {notes.postVoiceNotes.length > 0 && (
-            <div className="mt-2.5">
-              <VoiceNoteList notes={notes.postVoiceNotes} onDelete={(id) => notes.removeVoiceNote('post', id)} />
-            </div>
-          )}
-        </Block>
-      )}
     </div>
   )
 }

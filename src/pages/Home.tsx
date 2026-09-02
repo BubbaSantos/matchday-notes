@@ -75,17 +75,28 @@ export function Home() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <div className="flex items-baseline gap-3 mb-0.5">
+          <div className="flex items-center gap-2 mb-0.5">
             <h1
               className="font-journal m-0 leading-tight"
               style={{ color: 'var(--color-ink)', fontSize: '1.75rem' }}
             >
               The Archive
             </h1>
-            <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.85rem' }}>2026–27</span>
+            <span
+              className="rounded-full px-2 py-0.5"
+              style={{
+                backgroundColor: 'var(--color-accent-faint)',
+                color: 'var(--color-accent)',
+                fontSize: '0.68rem',
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+              }}
+            >
+              {currentSeasonLabel}
+            </span>
           </div>
           <p className="m-0 mt-0.5" style={{ color: 'var(--color-ink-muted)', fontSize: '0.85rem' }}>
-            A record of every matchday — before, during, and after.
+            A record of every match.
           </p>
         </div>
         <button

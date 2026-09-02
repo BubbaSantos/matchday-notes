@@ -1,10 +1,14 @@
-import { Link, useLocation } from 'react-router-dom'
-import { BookOpen, Search } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { BookOpen, Search, User, LogOut } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
 
 export function Nav() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { username, logout } = useAuth()
   const isHome = location.pathname === '/'
   const isSearch = location.pathname === '/search'
+  const isLogin = location.pathname === '/login'
 
   return (
     <nav
@@ -32,6 +36,19 @@ export function Nav() {
       <div className="flex items-center gap-1">
         <NavLink to="/" icon={<BookOpen size={15} />} label="Archive" active={isHome} />
         <NavLink to="/search" icon={<Search size={15} />} label="Search" active={isSearch} />
+        {username ? (
+          <button
+            onClick={() => logout().then(() => navigate('/'))}
+            title={`Log out ${username}`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm border-none cursor-pointer transition-colors"
+            style={{ background: 'none', color: 'var(--color-ink-muted)', fontFamily: 'inherit' }}
+          >
+            <LogOut size={15} />
+            <span>{username}</span>
+          </button>
+        ) : (
+          <NavLink to="/login" icon={<User size={15} />} label="Log in" active={isLogin} />
+        )}
       </div>
     </nav>
   )

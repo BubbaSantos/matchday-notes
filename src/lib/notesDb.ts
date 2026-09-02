@@ -1,6 +1,6 @@
-// Local, per-device persistence for pre/post-match notes and voice notes.
-// Text lives alongside the recorded audio Blob in IndexedDB (not localStorage —
-// audio can be a few hundred KB to a few MB per note, well past localStorage's
+// Local, per-device persistence for match notes and voice notes. Text lives
+// alongside the recorded audio Blob in IndexedDB (not localStorage — audio
+// can be a few hundred KB to a few MB per note, well past localStorage's
 // ~5MB origin quota, especially on iOS Safari).
 import type { VoiceNote } from '../types'
 
@@ -17,16 +17,44 @@ export interface StoredVoiceNote {
 }
 
 export interface NotesRecord {
-  preNotes: string
-  preNotesPostedAt?: string
-  postNotes: string
-  postNotesPostedAt?: string
-  preVoiceNotes: StoredVoiceNote[]
-  postVoiceNotes: StoredVoiceNote[]
+  notes: string
+  notesPostedAt?: string
+  voiceNotes: StoredVoiceNote[]
 }
 
 function emptyRecord(): NotesRecord {
-  return { preNotes: '', postNotes: '', preVoiceNotes: [], postVoiceNotes: [] }
+  return { notes: '', voiceNotes: [] }
+}
+
+// Rows saved before notes had a single-section-per-match model split into
+// preNotes/postNotes + separate voice note lists. Fold them into the new
+// shape on read rather than a one-off migration pass, so old data in a
+// browser that hasn't opened the app in a while still comes back correctly.
+interface LegacyRow {
+  preNotes?: string
+  preNotesPostedAt?: string
+  postNotes?: string
+  postNotesPostedAt?: string
+  preVoiceNotes?: StoredVoiceNote[]
+  postVoiceNotes?: StoredVoiceNote[]
+}
+
+function fromRow(row: (Partial<NotesRecord> & LegacyRow) | undefined): NotesRecord {
+  if (!row) return emptyRecord()
+  if (row.notes !== undefined || row.voiceNotes !== undefined) {
+    return {
+      notes: row.notes ?? '',
+      notesPostedAt: row.notesPostedAt,
+      voiceNotes: row.voiceNotes ?? [],
+    }
+  }
+  // Legacy pre/post shape.
+  const notes = [row.preNotes, row.postNotes].filter(Boolean).join('\n\n')
+  return {
+    notes,
+    notesPostedAt: row.postNotesPostedAt ?? row.preNotesPostedAt,
+    voiceNotes: [...(row.preVoiceNotes ?? []), ...(row.postVoiceNotes ?? [])],
+  }
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null
@@ -59,16 +87,8 @@ async function withStore<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore
 
 export async function getNotes(matchKey: string): Promise<NotesRecord> {
   try {
-    const row = await withStore<{ matchKey: string } & NotesRecord | undefined>('readonly', (s) => s.get(matchKey))
-    if (!row) return emptyRecord()
-    return {
-      preNotes: row.preNotes ?? '',
-      preNotesPostedAt: row.preNotesPostedAt,
-      postNotes: row.postNotes ?? '',
-      postNotesPostedAt: row.postNotesPostedAt,
-      preVoiceNotes: row.preVoiceNotes ?? [],
-      postVoiceNotes: row.postVoiceNotes ?? [],
-    }
+    const row = await withStore<{ matchKey: string } & Partial<NotesRecord> & LegacyRow | undefined>('readonly', (s) => s.get(matchKey))
+    return fromRow(row)
   } catch {
     return emptyRecord()
   }
@@ -77,17 +97,8 @@ export async function getNotes(matchKey: string): Promise<NotesRecord> {
 export async function getAllNotes(): Promise<Map<string, NotesRecord>> {
   const map = new Map<string, NotesRecord>()
   try {
-    const rows = await withStore<({ matchKey: string } & NotesRecord)[]>('readonly', (s) => s.getAll())
-    for (const row of rows) {
-      map.set(row.matchKey, {
-        preNotes: row.preNotes ?? '',
-        preNotesPostedAt: row.preNotesPostedAt,
-        postNotes: row.postNotes ?? '',
-        postNotesPostedAt: row.postNotesPostedAt,
-        preVoiceNotes: row.preVoiceNotes ?? [],
-        postVoiceNotes: row.postVoiceNotes ?? [],
-      })
-    }
+    const rows = await withStore<({ matchKey: string } & Partial<NotesRecord> & LegacyRow)[]>('readonly', (s) => s.getAll())
+    for (const row of rows) map.set(row.matchKey, fromRow(row))
   } catch { /* ignore — empty map */ }
   return map
 }
@@ -96,18 +107,17 @@ async function saveRecord(matchKey: string, record: NotesRecord): Promise<void> 
   await withStore('readwrite', (s) => s.put({ matchKey, ...record }))
 }
 
-export async function postTextNote(matchKey: string, field: 'preNotes' | 'postNotes', text: string): Promise<string> {
+export async function postTextNote(matchKey: string, text: string): Promise<string> {
   const record = await getNotes(matchKey)
   const postedAt = new Date().toISOString()
-  record[field] = text
-  record[field === 'preNotes' ? 'preNotesPostedAt' : 'postNotesPostedAt'] = postedAt
+  record.notes = text
+  record.notesPostedAt = postedAt
   await saveRecord(matchKey, record)
   return postedAt
 }
 
 export async function addVoiceNote(
   matchKey: string,
-  field: 'preVoiceNotes' | 'postVoiceNotes',
   audioBlob: Blob,
   transcript: string,
   duration: number
@@ -120,29 +130,14 @@ export async function addVoiceNote(
     createdAt: new Date().toISOString(),
     audioBlob,
   }
-  record[field] = [...record[field], note]
+  record.voiceNotes = [...record.voiceNotes, note]
   await saveRecord(matchKey, record)
   return note
 }
 
-export async function updateVoiceNoteTranscript(
-  matchKey: string,
-  field: 'preVoiceNotes' | 'postVoiceNotes',
-  id: string,
-  transcript: string
-): Promise<void> {
+export async function deleteVoiceNote(matchKey: string, id: string): Promise<void> {
   const record = await getNotes(matchKey)
-  record[field] = record[field].map((n) => (n.id === id ? { ...n, transcript } : n))
-  await saveRecord(matchKey, record)
-}
-
-export async function deleteVoiceNote(
-  matchKey: string,
-  field: 'preVoiceNotes' | 'postVoiceNotes',
-  id: string
-): Promise<void> {
-  const record = await getNotes(matchKey)
-  record[field] = record[field].filter((n) => n.id !== id)
+  record.voiceNotes = record.voiceNotes.filter((n) => n.id !== id)
   await saveRecord(matchKey, record)
 }
 

@@ -12,9 +12,8 @@ function searchMatches(fixtures: MatchEntry[], query: string) {
     if (match.phase !== 'post') return [] // only played games
 
     const snippets: string[] = []
-    if (match.preNotes?.toLowerCase().includes(q)) snippets.push(match.preNotes)
-    if (match.postNotes?.toLowerCase().includes(q)) snippets.push(match.postNotes)
-    for (const vn of [...(match.preVoiceNotes ?? []), ...(match.postVoiceNotes ?? [])]) {
+    if (match.notes?.toLowerCase().includes(q)) snippets.push(match.notes)
+    for (const vn of match.voiceNotes ?? []) {
       if (vn.transcript.toLowerCase().includes(q)) snippets.push(vn.transcript)
     }
 

@@ -135,18 +135,16 @@ export interface MatchEntry {
   round?: string
   rescheduledFrom?: { date: string; reason: string }
 
-  // Pre-match
   standing?: LeagueStanding
   injuries?: InjuryRecord[]
-  preNotes?: string
-  preVoiceNotes?: VoiceNote[]
 
-  // Post-match
   phase: MatchPhase
   celticScore?: number
   opponentScore?: number
   penalties?: { celtic: number; opponent: number }
   stats?: MatchStat[]
-  postNotes?: string
-  postVoiceNotes?: VoiceNote[]
+
+  notes?: string
+  notesPostedAt?: string
+  voiceNotes?: VoiceNote[]
 }

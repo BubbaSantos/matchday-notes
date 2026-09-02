@@ -162,12 +162,12 @@ export function FixtureCard({ match, isLast }: { match: MatchEntry; isLast: bool
                   Postponed from {formatShortDate(match.rescheduledFrom.date)} — {match.rescheduledFrom.reason}
                 </p>
               )}
-              {match.preNotes && (
+              {match.notes && (
                 <p
                   className="text-sm leading-relaxed line-clamp-1 mt-1 m-0"
                   style={{ color: 'var(--color-ink-muted)', fontSize: '0.8rem' }}
                 >
-                  {match.preNotes}
+                  {match.notes}
                 </p>
               )}
             </div>

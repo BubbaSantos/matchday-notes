@@ -7,6 +7,8 @@ import { fetchSofascoreData, getHistoricalFixtures } from './server/sofascore.js
 import { getEnrichedFixtures } from './server/fixtures.js'
 import { handleTranscribeRequest } from './server/transcribe.js'
 import { fetchStanding, fetchInjuries } from './server/sportmonks.js'
+import { handleSignup, handleLogin, handleLogout, handleMe } from './server/authHandlers.js'
+import { handleGetNotes, handleSaveText, handleVoicePost, handleVoiceDelete, handleImport } from './server/notesHandlers.js'
 
 async function handleTableRequest(req: IncomingMessage, res: ServerResponse) {
   try {
@@ -133,6 +135,48 @@ export default defineConfig(({ mode }) => {
         server.middlewares.use('/api/injuries', (req, res, next) => {
           if (req.method !== 'GET') { next(); return }
           handleInjuriesRequest(req, res)
+        })
+
+        server.middlewares.use('/api/auth/signup', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return }
+          handleSignup(req, res)
+        })
+
+        server.middlewares.use('/api/auth/login', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return }
+          handleLogin(req, res)
+        })
+
+        server.middlewares.use('/api/auth/logout', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return }
+          handleLogout(req, res)
+        })
+
+        server.middlewares.use('/api/auth/me', (req, res, next) => {
+          if (req.method !== 'GET') { next(); return }
+          handleMe(req, res)
+        })
+
+        server.middlewares.use('/api/notes/save-text', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return }
+          handleSaveText(req, res)
+        })
+
+        server.middlewares.use('/api/notes/voice', (req, res, next) => {
+          if (req.method === 'POST') { handleVoicePost(req, res); return }
+          if (req.method === 'DELETE') { handleVoiceDelete(req, res); return }
+          next()
+        })
+
+        server.middlewares.use('/api/notes/import', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return }
+          handleImport(req, res)
+        })
+
+        // Must be registered after the more specific /api/notes/* routes above.
+        server.middlewares.use('/api/notes', (req, res, next) => {
+          if (req.method !== 'GET') { next(); return }
+          handleGetNotes(req, res)
         })
       },
     },
