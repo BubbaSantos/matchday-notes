@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchCelticFixtures } from '../lib/espn'
-import { fetchCelticStanding } from '../lib/sportmonks'
+import { fetchCelticStanding, fetchCelticInjuries } from '../lib/sportmonks'
 import { getAllNotes, toVoiceNote } from '../lib/notesDb'
 import { stableMatchKey } from '../lib/matchKey'
 import type { MatchEntry, LeagueStanding } from '../types'
@@ -27,9 +27,10 @@ export function useFixtures(): FixtureStore {
 
     async function load() {
       try {
-        const [allFixtures, stand, notesMap] = await Promise.all([
+        const [allFixtures, stand, injuries, notesMap] = await Promise.all([
           fetchCelticFixtures(),
           fetchCelticStanding().catch(() => null),
+          fetchCelticInjuries().catch(() => []),
           getAllNotes().catch(() => new Map()),
         ])
         if (cancelled) return
@@ -55,6 +56,12 @@ export function useFixtures(): FixtureStore {
         enriched.sort(
           (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
         )
+
+        // Attach the current injury list to just the next upcoming fixture —
+        // it's a live squad snapshot, not something that varies per match, so
+        // showing it on every future fixture would be misleading.
+        const nextUpcoming = enriched.find((f) => f.phase === 'pre')
+        if (nextUpcoming && injuries.length > 0) nextUpcoming.injuries = injuries
 
         setFixtures(enriched)
         setStanding(stand)

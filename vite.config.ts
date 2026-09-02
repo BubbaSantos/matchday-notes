@@ -6,6 +6,7 @@ import { computeLeagueTable } from './server/table.js'
 import { fetchSofascoreData, getHistoricalFixtures } from './server/sofascore.js'
 import { getEnrichedFixtures } from './server/fixtures.js'
 import { handleTranscribeRequest } from './server/transcribe.js'
+import { fetchStanding, fetchInjuries } from './server/sportmonks.js'
 
 async function handleTableRequest(req: IncomingMessage, res: ServerResponse) {
   try {
@@ -61,6 +62,30 @@ async function handleFixturesRequest(_req: IncomingMessage, res: ServerResponse)
   }
 }
 
+async function handleStandingRequest(_req: IncomingMessage, res: ServerResponse) {
+  try {
+    const standing = await fetchStanding()
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.end(JSON.stringify(standing))
+  } catch (err) {
+    res.statusCode = 500
+    res.end(JSON.stringify({ error: String(err) }))
+  }
+}
+
+async function handleInjuriesRequest(_req: IncomingMessage, res: ServerResponse) {
+  try {
+    const injuries = await fetchInjuries()
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.end(JSON.stringify(injuries))
+  } catch (err) {
+    res.statusCode = 500
+    res.end(JSON.stringify({ error: String(err) }))
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // Load .env / .env.local into process.env so server-side code (the API
   // middleware below, all under server/*.ts) can read secrets like
@@ -99,17 +124,18 @@ export default defineConfig(({ mode }) => {
           if (req.method !== 'POST') { next(); return }
           handleTranscribeRequest(req, res)
         })
+
+        server.middlewares.use('/api/standing', (req, res, next) => {
+          if (req.method !== 'GET') { next(); return }
+          handleStandingRequest(req, res)
+        })
+
+        server.middlewares.use('/api/injuries', (req, res, next) => {
+          if (req.method !== 'GET') { next(); return }
+          handleInjuriesRequest(req, res)
+        })
       },
     },
   ],
-  server: {
-    proxy: {
-      '/api/sportmonks': {
-        target: 'https://api.sportmonks.com',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api\/sportmonks/, ''),
-      },
-    },
-  },
   }
 })

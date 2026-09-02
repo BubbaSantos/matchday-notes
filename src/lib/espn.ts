@@ -1,5 +1,5 @@
 import { cacheGet, cacheSet } from './cache'
-import type { MatchEntry, Competition, MatchStat } from '../types'
+import type { MatchEntry, Competition } from '../types'
 
 // Raw shape from server/fixtures.ts (SPFL fixtures + ICS/ESPN enrichment)
 interface RawFixture {
@@ -150,11 +150,5 @@ export async function fetchCelticFixtures(): Promise<MatchEntry[]> {
   return entries
 }
 
-// Standings still come from Sportmonks (free plan covers this)
-export { fetchCelticStanding, fetchMatchStats, fetchOpponentId } from './sportmonks'
-
-// ESPN match stats — built from the fixture data we already have
-// (ESPN doesn't expose per-match stats on this endpoint; Sportmonks still used for stats)
-export function buildMatchStats(_fixture: RawFixture): MatchStat[] {
-  return []
-}
+// Standing + injuries still come from Sportmonks (free plan covers this)
+export { fetchCelticStanding, fetchCelticInjuries } from './sportmonks'

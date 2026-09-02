@@ -9,7 +9,7 @@ written.
 
 ```bash
 npm install
-cp .env.example .env   # add OPENAI_API_KEY (transcription) and SCRAPERAPI_KEY (Sofascore)
+cp .env.example .env   # add OPENAI_API_KEY, SCRAPERAPI_KEY, and SPORTMONKS_TOKEN
 npm run dev
 ```
 
@@ -37,8 +37,18 @@ Screen" from Safari's share sheet.
   back to plain [`got-scraping`](https://github.com/apify/got-scraping)
   (fingerprint spoofing only), which works ~20-30% of the time locally and
   effectively never from Vercel.
-- **League standings**: computed from ESPN's Premiership results
-  (`server/table.ts`).
+- **League standing widget + injury list**: Sportmonks free plan
+  (`server/sportmonks.ts`), server-side only — `SPORTMONKS_TOKEN` never
+  reaches the client, unlike an earlier version of this integration that
+  read a `VITE_`-prefixed token client-side (and was broken in production
+  the whole time — no token was ever configured, and there was no serverless
+  function backing `/api/sportmonks` either). Injuries are filtered to
+  `category === 'injury' && !completed`, since the free plan's "sidelined"
+  data includes stale entries (e.g. a multi-year-old suspension still marked
+  incomplete).
+- **Full expandable league table**: computed independently from ESPN's
+  Premiership results (`server/table.ts`) — this is the "Before match" /
+  "After match" table shown on a fixture's own page, not the standing widget.
 - **Voice note transcription**: `server/transcribe.ts` proxies recorded audio
   to OpenAI's Whisper API. Requires `OPENAI_API_KEY`.
 - **Notes & voice notes storage**: entirely client-side, in IndexedDB
@@ -63,7 +73,7 @@ For a from-scratch setup elsewhere:
 2. In Vercel, "Add New Project" → import the repo. It auto-detects Vite; no
    build config changes needed.
 3. Add environment variables (Project Settings → Environment Variables):
-   `OPENAI_API_KEY` and `SCRAPERAPI_KEY`.
+   `OPENAI_API_KEY`, `SCRAPERAPI_KEY`, and `SPORTMONKS_TOKEN`.
 4. Deploy.
 5. On your iPhone, open the deployed URL in Safari → Share → Add to Home
    Screen.
