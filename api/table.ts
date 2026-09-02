@@ -8,7 +8,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const inclusive = url.searchParams.get('inclusive') !== 'false'
     const table = await computeLeagueTable(cutoff, inclusive)
     res.setHeader('Content-Type', 'application/json')
-    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600')
     res.end(JSON.stringify(table))
   } catch (err) {
     res.statusCode = 500

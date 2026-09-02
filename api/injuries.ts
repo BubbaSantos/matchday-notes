@@ -5,7 +5,7 @@ export default async function handler(_req: IncomingMessage, res: ServerResponse
   try {
     const injuries = await fetchInjuries()
     res.setHeader('Content-Type', 'application/json')
-    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600')
     res.end(JSON.stringify(injuries))
   } catch (err) {
     res.statusCode = 500

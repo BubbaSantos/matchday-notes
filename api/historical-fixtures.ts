@@ -5,7 +5,7 @@ export default async function handler(_req: IncomingMessage, res: ServerResponse
   try {
     const fixtures = await getHistoricalFixtures()
     res.setHeader('Content-Type', 'application/json')
-    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=21600')
     res.end(JSON.stringify(fixtures))
   } catch (err) {
     res.statusCode = 500

@@ -124,57 +124,80 @@ const ssDateMap = new Map<string, number>()
 let ssPageCacheExpiry = 0
 let historicalFixturesCache: SSFixture[] = []
 const SS_PAGES = 15
+const SS_PAGE_BATCH_SIZE = 5 // fetch pages concurrently in batches — this loop used to run one
+                              // page at a time through ScraperAPI, which alone was the biggest
+                              // contributor to slow cold-start loads (up to 16 sequential round
+                              // trips); batching cuts that by roughly the batch size.
+
+type SSEventPage = { events?: Record<string, unknown>[] } | null
 
 async function ensureSofascorePages(): Promise<void> {
   if (Date.now() < ssPageCacheExpiry) return
 
   ssDateMap.clear()
   const fixtures: SSFixture[] = []
+  let firstPageFailed = false
 
-  for (let page = 0; page <= SS_PAGES; page++) {
-    const data = await ssFetch<{ events?: Record<string, unknown>[] }>(
-      `https://api.sofascore.com/api/v1/team/${CELTIC_SS_ID}/events/last/${page}`
+  batches:
+  for (let batchStart = 0; batchStart <= SS_PAGES; batchStart += SS_PAGE_BATCH_SIZE) {
+    const pages: number[] = []
+    for (let p = batchStart; p <= Math.min(batchStart + SS_PAGE_BATCH_SIZE - 1, SS_PAGES); p++) pages.push(p)
+
+    const results: SSEventPage[] = await Promise.all(
+      pages.map((page) =>
+        ssFetch<{ events?: Record<string, unknown>[] }>(
+          `https://api.sofascore.com/api/v1/team/${CELTIC_SS_ID}/events/last/${page}`
+        )
+      )
     )
-    // Page 0 failing outright (all retries exhausted) means Sofascore is
-    // fully blocking us right now — don't cache that as "no fixtures" for
-    // 6 hours, just leave the cache stale so the next call retries.
-    if (page === 0 && data == null) return
-    if (!data?.events?.length) break
 
-    for (const e of data.events) {
-      const id = e.id as number
-      const ts = e.startTimestamp as number
-      const dt = new Date(ts * 1000)
-      const date = dt.toLocaleDateString('en-CA')
+    for (let i = 0; i < results.length; i++) {
+      const page = pages[i]
+      const data = results[i]
 
-      ssDateMap.set(date, id)
+      // Page 0 failing outright (all retries exhausted) means Sofascore is
+      // fully blocking us right now — don't cache that as "no fixtures" for
+      // 6 hours, just leave the cache stale so the next call retries.
+      if (page === 0 && data == null) { firstPageFailed = true; break batches }
+      if (!data?.events?.length) break batches
 
-      const comp = ((e.tournament as Record<string, string>)?.name) ?? ''
-      const mappedComp = SS_COMP_MAP[comp]
-      if (mappedComp == null) continue
+      for (const e of data.events) {
+        const id = e.id as number
+        const ts = e.startTimestamp as number
+        const dt = new Date(ts * 1000)
+        const date = dt.toLocaleDateString('en-CA')
 
-      const homeName = (e.homeTeam as Record<string, string>)?.name
-      const awayName = (e.awayTeam as Record<string, string>)?.name
-      if (!homeName || !awayName) continue
+        ssDateMap.set(date, id)
 
-      const kickoff = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-      const status = (e.status as Record<string, unknown>)?.type as string
-      const isFinished = status === 'finished'
-      const homeScore = (e.homeScore as Record<string, unknown>)?.current as number | undefined
-      const awayScore = (e.awayScore as Record<string, unknown>)?.current as number | undefined
+        const comp = ((e.tournament as Record<string, string>)?.name) ?? ''
+        const mappedComp = SS_COMP_MAP[comp]
+        if (mappedComp == null) continue
 
-      fixtures.push({
-        date,
-        kickoff,
-        home: homeName,
-        away: awayName,
-        comp: mappedComp,
-        homeScore: isFinished && homeScore != null ? homeScore : null,
-        awayScore: isFinished && awayScore != null ? awayScore : null,
-        state: isFinished ? 'post' : 'pre',
-      })
+        const homeName = (e.homeTeam as Record<string, string>)?.name
+        const awayName = (e.awayTeam as Record<string, string>)?.name
+        if (!homeName || !awayName) continue
+
+        const kickoff = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        const status = (e.status as Record<string, unknown>)?.type as string
+        const isFinished = status === 'finished'
+        const homeScore = (e.homeScore as Record<string, unknown>)?.current as number | undefined
+        const awayScore = (e.awayScore as Record<string, unknown>)?.current as number | undefined
+
+        fixtures.push({
+          date,
+          kickoff,
+          home: homeName,
+          away: awayName,
+          comp: mappedComp,
+          homeScore: isFinished && homeScore != null ? homeScore : null,
+          awayScore: isFinished && awayScore != null ? awayScore : null,
+          state: isFinished ? 'post' : 'pre',
+        })
+      }
     }
   }
+
+  if (firstPageFailed) return
 
   ssPageCacheExpiry = Date.now() + 6 * 60 * 60 * 1000
   historicalFixturesCache = fixtures
@@ -188,6 +211,18 @@ export async function getHistoricalFixtures(): Promise<SSFixture[]> {
 async function getSofascoreId(date: string): Promise<number | null> {
   await ensureSofascorePages()
   return ssDateMap.get(date) ?? null
+}
+
+// Match data for any date strictly before today is final and will never
+// change again — safe to cache hard at Vercel's edge. A date of today (or,
+// defensively, later) might still be mid-polling-window pre-kickoff or live,
+// so keep that cache short enough not to fight the 5-minute client-side
+// lineup poll.
+export function matchEventsCacheControl(date: string): string {
+  const today = new Date().toLocaleDateString('en-CA')
+  return date < today
+    ? 'public, s-maxage=86400, stale-while-revalidate=604800'
+    : 'public, s-maxage=60, stale-while-revalidate=300'
 }
 
 export async function fetchSofascoreData(date: string): Promise<SSData | null> {
