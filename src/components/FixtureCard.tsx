@@ -13,6 +13,11 @@ function formatDate(iso: string) {
   }
 }
 
+function formatShortDate(iso: string) {
+  const d = new Date(`${iso}T00:00:00`)
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
 function ResultScore({ match }: { match: MatchEntry }) {
   if (match.phase !== 'post' || match.celticScore === undefined) {
     const { time } = formatDate(match.kickoff)
@@ -136,6 +141,14 @@ export function FixtureCard({ match, isLast }: { match: MatchEntry; isLast: bool
                   <>Celtic <span style={{ color: 'var(--color-ink-muted)' }}>vs</span> {match.opponent}</>
                 )}
               </div>
+              {match.rescheduledFrom && (
+                <p
+                  className="text-sm leading-relaxed mt-1 mb-0"
+                  style={{ color: 'var(--color-ink-faint)', fontSize: '0.72rem', fontStyle: 'italic' }}
+                >
+                  Postponed from {formatShortDate(match.rescheduledFrom.date)} — {match.rescheduledFrom.reason}
+                </p>
+              )}
               {match.preNotes && (
                 <p
                   className="text-sm leading-relaxed line-clamp-1 mt-1 m-0"

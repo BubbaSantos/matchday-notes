@@ -46,6 +46,18 @@ interface SSHistoricalFixture {
   stadiumName?: string
 }
 
+// ESPN's feed only ever shows a fixture's current (rescheduled) date — postponements
+// that get a new date entirely vanish from the data. Track known ones by hand so the
+// diary can still note them.
+const KNOWN_RESCHEDULES: { opponent: string; date: string; from: string; reason: string }[] = [
+  {
+    opponent: 'St Johnstone',
+    date: '2026-09-09',
+    from: '2026-08-22',
+    reason: "Celtic's Champions League play-off",
+  },
+]
+
 function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: string, now: Date): MatchEntry {
   const isHome = f.home === 'Celtic'
   const opponent = isHome ? f.away : f.home
@@ -73,11 +85,16 @@ function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: stri
     entry.opponentScore = isHome ? f.awayScore : f.homeScore
   }
 
+  const reschedule = KNOWN_RESCHEDULES.find((r) => r.opponent === opponent && r.date === f.date)
+  if (reschedule) {
+    entry.rescheduledFrom = { date: reschedule.from, reason: reschedule.reason }
+  }
+
   return entry
 }
 
 export async function fetchCelticFixtures(): Promise<MatchEntry[]> {
-  const cacheKey = 'espn_celtic_fixtures_v4'
+  const cacheKey = 'espn_celtic_fixtures_v5'
   const cached = cacheGet<MatchEntry[]>(cacheKey)
   if (cached) return cached
 

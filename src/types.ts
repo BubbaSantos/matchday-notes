@@ -133,6 +133,7 @@ export interface MatchEntry {
   kickoff: string // ISO date string
   stadiumName?: string
   round?: string
+  rescheduledFrom?: { date: string; reason: string }
 
   // Pre-match
   standing?: LeagueStanding
