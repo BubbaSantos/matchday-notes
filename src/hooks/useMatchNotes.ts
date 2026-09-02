@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   addVoiceNote,
   deleteVoiceNote,
   getNotes,
-  setTextNote,
+  postTextNote,
   toVoiceNote,
   type NotesRecord,
 } from '../lib/notesDb'
@@ -11,12 +11,14 @@ import type { VoiceNote } from '../types'
 
 export interface MatchNotes {
   preNotes: string
+  preNotesPostedAt?: string
   postNotes: string
+  postNotesPostedAt?: string
   preVoiceNotes: VoiceNote[]
   postVoiceNotes: VoiceNote[]
   loading: boolean
-  setPreNotes: (text: string) => void
-  setPostNotes: (text: string) => void
+  postPreNotes: (text: string) => void
+  postPostNotes: (text: string) => void
   saveVoiceNote: (field: 'pre' | 'post', blob: Blob, transcript: string, duration: number) => void
   removeVoiceNote: (field: 'pre' | 'post', id: string) => void
 }
@@ -28,11 +30,8 @@ function toVoiceNotes(record: NotesRecord) {
   }
 }
 
-const SAVE_DEBOUNCE_MS = 400
-
 export function useMatchNotes(matchKey: string | undefined): MatchNotes {
   const [record, setRecord] = useState<NotesRecord | null>(null)
-  const saveTimers = useRef<Record<string, number>>({})
 
   useEffect(() => {
     if (!matchKey) return
@@ -41,25 +40,19 @@ export function useMatchNotes(matchKey: string | undefined): MatchNotes {
     return () => { cancelled = true }
   }, [matchKey])
 
-  const debouncedSave = useCallback((field: 'preNotes' | 'postNotes', key: string, text: string) => {
+  const postPreNotes = useCallback((text: string) => {
     if (!matchKey) return
-    window.clearTimeout(saveTimers.current[key])
-    saveTimers.current[key] = window.setTimeout(() => {
-      setTextNote(matchKey, field, text)
-    }, SAVE_DEBOUNCE_MS)
+    postTextNote(matchKey, 'preNotes', text).then((postedAt) => {
+      setRecord((prev) => prev && { ...prev, preNotes: text, preNotesPostedAt: postedAt })
+    })
   }, [matchKey])
 
-  const setPreNotes = useCallback((text: string) => {
+  const postPostNotes = useCallback((text: string) => {
     if (!matchKey) return
-    setRecord((prev) => prev && { ...prev, preNotes: text })
-    debouncedSave('preNotes', 'pre', text)
-  }, [matchKey, debouncedSave])
-
-  const setPostNotes = useCallback((text: string) => {
-    if (!matchKey) return
-    setRecord((prev) => prev && { ...prev, postNotes: text })
-    debouncedSave('postNotes', 'post', text)
-  }, [matchKey, debouncedSave])
+    postTextNote(matchKey, 'postNotes', text).then((postedAt) => {
+      setRecord((prev) => prev && { ...prev, postNotes: text, postNotesPostedAt: postedAt })
+    })
+  }, [matchKey])
 
   const saveVoiceNote = useCallback((field: 'pre' | 'post', blob: Blob, transcript: string, duration: number) => {
     if (!matchKey) return
@@ -80,11 +73,13 @@ export function useMatchNotes(matchKey: string | undefined): MatchNotes {
 
   return {
     preNotes: record?.preNotes ?? '',
+    preNotesPostedAt: record?.preNotesPostedAt,
     postNotes: record?.postNotes ?? '',
+    postNotesPostedAt: record?.postNotesPostedAt,
     ...voiceNotes,
     loading: record === null,
-    setPreNotes,
-    setPostNotes,
+    postPreNotes,
+    postPostNotes,
     saveVoiceNote,
     removeVoiceNote,
   }

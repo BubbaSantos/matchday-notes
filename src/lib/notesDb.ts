@@ -18,7 +18,9 @@ export interface StoredVoiceNote {
 
 export interface NotesRecord {
   preNotes: string
+  preNotesPostedAt?: string
   postNotes: string
+  postNotesPostedAt?: string
   preVoiceNotes: StoredVoiceNote[]
   postVoiceNotes: StoredVoiceNote[]
 }
@@ -61,7 +63,9 @@ export async function getNotes(matchKey: string): Promise<NotesRecord> {
     if (!row) return emptyRecord()
     return {
       preNotes: row.preNotes ?? '',
+      preNotesPostedAt: row.preNotesPostedAt,
       postNotes: row.postNotes ?? '',
+      postNotesPostedAt: row.postNotesPostedAt,
       preVoiceNotes: row.preVoiceNotes ?? [],
       postVoiceNotes: row.postVoiceNotes ?? [],
     }
@@ -77,7 +81,9 @@ export async function getAllNotes(): Promise<Map<string, NotesRecord>> {
     for (const row of rows) {
       map.set(row.matchKey, {
         preNotes: row.preNotes ?? '',
+        preNotesPostedAt: row.preNotesPostedAt,
         postNotes: row.postNotes ?? '',
+        postNotesPostedAt: row.postNotesPostedAt,
         preVoiceNotes: row.preVoiceNotes ?? [],
         postVoiceNotes: row.postVoiceNotes ?? [],
       })
@@ -90,10 +96,13 @@ async function saveRecord(matchKey: string, record: NotesRecord): Promise<void> 
   await withStore('readwrite', (s) => s.put({ matchKey, ...record }))
 }
 
-export async function setTextNote(matchKey: string, field: 'preNotes' | 'postNotes', text: string): Promise<void> {
+export async function postTextNote(matchKey: string, field: 'preNotes' | 'postNotes', text: string): Promise<string> {
   const record = await getNotes(matchKey)
+  const postedAt = new Date().toISOString()
   record[field] = text
+  record[field === 'preNotes' ? 'preNotesPostedAt' : 'postNotesPostedAt'] = postedAt
   await saveRecord(matchKey, record)
+  return postedAt
 }
 
 export async function addVoiceNote(

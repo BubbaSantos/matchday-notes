@@ -15,7 +15,13 @@ function searchMatches(fixtures: MatchEntry[], query: string) {
     for (const vn of [...(match.preVoiceNotes ?? []), ...(match.postVoiceNotes ?? [])]) {
       if (vn.transcript.toLowerCase().includes(q)) snippets.push(vn.transcript)
     }
-    return snippets.length ? [{ match, snippets }] : []
+
+    const matchesFixtureInfo =
+      match.opponent.toLowerCase().includes(q) ||
+      match.competition.toLowerCase().includes(q) ||
+      (match.round?.toLowerCase().includes(q) ?? false)
+
+    return snippets.length > 0 || matchesFixtureInfo ? [{ match, snippets }] : []
   })
 }
 

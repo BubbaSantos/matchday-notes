@@ -213,10 +213,12 @@ export function MatchDay() {
             </Block>
           )}
           <Block title="Pre-match notes">
-            <NotesEditor
-              value={notes.preNotes}
-              onChange={notes.setPreNotes}
+            <NotesBlock
+              key={`${match.id}-pre`}
+              text={notes.preNotes}
+              postedAt={notes.preNotesPostedAt}
               placeholder="How are you feeling about this one…"
+              onPost={notes.postPreNotes}
             />
             <div className="mt-2.5">
               <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('pre', blob, transcript, duration)} />
@@ -232,10 +234,12 @@ export function MatchDay() {
         {isPast && (
           <Section label="After the Match" dot="filled">
             <Block title="Post-match notes">
-              <NotesEditor
-                value={notes.postNotes}
-                onChange={notes.setPostNotes}
+              <NotesBlock
+                key={`${match.id}-post`}
+                text={notes.postNotes}
+                postedAt={notes.postNotesPostedAt}
                 placeholder="What did you make of it…"
+                onPost={notes.postPostNotes}
               />
               <div className="mt-2.5">
                 <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('post', blob, transcript, duration)} />
@@ -290,31 +294,106 @@ function Section({
   )
 }
 
-function NotesEditor({
-  value,
-  onChange,
+function formatPostedAt(iso: string) {
+  const d = new Date(iso)
+  return `Posted ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} at ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+function NotesBlock({
+  text,
+  postedAt,
   placeholder,
+  onPost,
 }: {
-  value: string
-  onChange: (text: string) => void
+  text: string
+  postedAt: string | undefined
   placeholder: string
+  onPost: (text: string) => void
 }) {
+  const [editing, setEditing] = useState(!text)
+  const [draft, setDraft] = useState(text)
+
+  function handlePost() {
+    const trimmed = draft.trim()
+    if (!trimmed) return
+    onPost(trimmed)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={placeholder}
+          rows={3}
+          autoFocus
+          className="font-journal w-full rounded border resize-y leading-relaxed"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-ink-secondary)',
+            fontSize: '0.975rem',
+            padding: '0.6rem 0.75rem',
+            fontFamily: 'inherit',
+          }}
+        />
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            onClick={handlePost}
+            disabled={!draft.trim()}
+            className="rounded border-none cursor-pointer px-3 py-1.5"
+            style={{
+              backgroundColor: draft.trim() ? 'var(--color-accent)' : 'var(--color-border)',
+              color: '#fff',
+              fontSize: '0.8rem',
+              fontFamily: 'inherit',
+              opacity: draft.trim() ? 1 : 0.6,
+            }}
+          >
+            Post
+          </button>
+          {text && (
+            <button
+              onClick={() => { setDraft(text); setEditing(false) }}
+              className="rounded border cursor-pointer px-3 py-1.5"
+              style={{
+                background: 'none',
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-ink-muted)',
+                fontSize: '0.8rem',
+                fontFamily: 'inherit',
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      rows={3}
-      className="font-journal w-full rounded border resize-y leading-relaxed"
-      style={{
-        backgroundColor: 'var(--color-surface)',
-        borderColor: 'var(--color-border)',
-        color: 'var(--color-ink-secondary)',
-        fontSize: '0.975rem',
-        padding: '0.6rem 0.75rem',
-        fontFamily: 'inherit',
-      }}
-    />
+    <div>
+      <p className="font-journal m-0 leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.975rem' }}>
+        {text}
+      </p>
+      <div className="flex items-center gap-2.5 mt-1.5">
+        {postedAt && (
+          <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.72rem' }}>
+            {formatPostedAt(postedAt)}
+          </span>
+        )}
+        <button
+          onClick={() => { setDraft(text); setEditing(true) }}
+          className="border-none cursor-pointer p-0"
+          style={{ background: 'none', color: 'var(--color-accent)', fontSize: '0.72rem', fontFamily: 'inherit' }}
+        >
+          Edit
+        </button>
+      </div>
+    </div>
   )
 }
 
