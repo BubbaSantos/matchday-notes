@@ -17,7 +17,9 @@ export function Home() {
   const competitions = Array.from(new Set(fixtures.map((f) => f.competition))) as Competition[]
   const filtered = filter === 'all' ? fixtures : fixtures.filter((m) => m.competition === filter)
   const upcoming = filtered.filter((m) => m.phase === 'pre' || m.phase === 'live')
-  const past = filtered.filter((m) => m.phase === 'post') // already newest-first from espn.ts sort
+  const past = filtered
+    .filter((m) => m.phase === 'post')
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()) // newest first
   const currentSeasonLabel = getSeason(new Date().toISOString())
   const currentSeasonCount = past.filter((m) => getSeason(m.kickoff) === currentSeasonLabel).length
 

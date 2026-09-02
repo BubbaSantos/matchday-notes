@@ -22,24 +22,70 @@ function formatFullDate(iso: string) {
   }
 }
 
+// Clubs typically release lineups 60-75 minutes before kickoff. Once a match
+// enters that window, poll every 5 minutes until the lineup actually shows up
+// (rather than only fetching once full time has passed).
+const LINEUP_POLL_WINDOW_MS = 75 * 60 * 1000
+const LINEUP_POLL_INTERVAL_MS = 5 * 60 * 1000
+const LINEUP_POLL_MAX_WAIT_MS = 6 * 60 * 60 * 1000 // cap setTimeout delay well under its ~24.8-day limit
+
 function useMatchEvents(match: MatchEntry | undefined) {
   const [events, setEvents] = useState<SSMatchData | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!match || match.phase !== 'post') return
+    if (!match) return
+    const isPast = match.phase === 'post'
+    const kickoffMs = new Date(match.kickoff).getTime()
+    const date = match.kickoff.slice(0, 10)
+
     let cancelled = false
-    setLoading(true)
-    ;(async () => {
+    let timer: number | undefined
+    let firstFetchDone = false
+
+    async function fetchOnce() {
+      if (!firstFetchDone) setLoading(true)
+      let data: SSMatchData | null = null
       try {
-        const date = match.kickoff.slice(0, 10)
-        const data = await fetchMatchEvents(date)
+        data = await fetchMatchEvents(date)
         if (!cancelled) setEvents(data)
-      } catch { /* no events */ }
-      finally { if (!cancelled) setLoading(false) }
-    })()
-    return () => { cancelled = true }
-  }, [match?.id])
+      } catch { /* no events yet */ }
+      finally {
+        if (!cancelled && !firstFetchDone) {
+          setLoading(false)
+          firstFetchDone = true
+        }
+      }
+      return data
+    }
+
+    function scheduleNext(delayMs: number) {
+      timer = window.setTimeout(tick, Math.min(Math.max(delayMs, 0), LINEUP_POLL_MAX_WAIT_MS))
+    }
+
+    async function tick() {
+      if (cancelled) return
+      const msUntilKickoff = kickoffMs - Date.now()
+
+      if (!isPast && msUntilKickoff > LINEUP_POLL_WINDOW_MS) {
+        // Not yet in the pre-kickoff window — check back once it opens.
+        scheduleNext(msUntilKickoff - LINEUP_POLL_WINDOW_MS)
+        return
+      }
+
+      const data = await fetchOnce()
+      const lineupsShown = !!data && (data.homeLineup.players.length > 0 || data.awayLineup.players.length > 0)
+      if (!isPast && !lineupsShown) scheduleNext(LINEUP_POLL_INTERVAL_MS)
+    }
+
+    if (isPast) {
+      fetchOnce()
+    } else {
+      tick()
+    }
+
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [match?.id, match?.phase, match?.kickoff])
 
   return { events, loadingEvents: loading }
 }
@@ -195,8 +241,8 @@ export function MatchDay() {
         )}
 
         {/* Match events and stats — same card, below the table */}
-        {isPast && (loadingEvents || events) && (
-          <CollapsibleEvents loading={loadingEvents} events={events} opponentName={match.opponent} />
+        {(loadingEvents || events) && (
+          <CollapsibleEvents key={match.id} loading={loadingEvents} events={events} opponentName={match.opponent} isPast={isPast} />
         )}
       </div>
 
@@ -562,10 +608,12 @@ function CollapsibleEvents({
   loading,
   events,
   opponentName,
+  isPast,
 }: {
   loading: boolean
   events: SSMatchData | null
   opponentName: string
+  isPast: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [tab, setTab] = useState<EventsTab>('events')
@@ -573,6 +621,16 @@ function CollapsibleEvents({
   const hasLineups =
     events &&
     (events.homeLineup.players.length > 0 || events.awayLineup.players.length > 0)
+
+  // Pre-match, the whole point of polling is to surface the lineup the
+  // moment it's out — jump straight to it instead of making the user notice
+  // and click through.
+  useEffect(() => {
+    if (!isPast && hasLineups) {
+      setExpanded(true)
+      setTab('lineups')
+    }
+  }, [isPast, hasLineups])
 
   return (
     <div
