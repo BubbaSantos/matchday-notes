@@ -133,7 +133,7 @@ export function MatchDay() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center" style={{ color: 'var(--color-ink-muted)' }}>
         <p>Match not found.</p>
-        <Link to="/" style={{ color: 'var(--color-accent)', fontSize: '0.875rem' }}>← Back to diary</Link>
+        <Link to="/" style={{ color: 'var(--color-accent)', fontSize: '0.875rem' }}>← Back to archive</Link>
       </div>
     )
   }

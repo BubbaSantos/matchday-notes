@@ -142,7 +142,7 @@ export function Search() {
       {!query && (
         <div className="text-center py-16" style={{ color: 'var(--color-ink-faint)' }}>
           <SearchIcon size={28} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm m-0">Start typing to search your diary</p>
+          <p className="text-sm m-0">Start typing to search the archive</p>
         </div>
       )}
     </div>

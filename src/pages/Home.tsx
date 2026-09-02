@@ -80,7 +80,7 @@ export function Home() {
               className="font-journal m-0 leading-tight"
               style={{ color: 'var(--color-ink)', fontSize: '1.75rem' }}
             >
-              The Diary
+              The Archive
             </h1>
             <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.85rem' }}>2026–27</span>
           </div>

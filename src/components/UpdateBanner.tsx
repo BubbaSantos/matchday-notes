@@ -4,7 +4,7 @@ export function UpdateBanner() {
       className="flex items-center justify-center gap-3 px-4 py-2"
       style={{ backgroundColor: 'var(--color-accent)', color: '#fff', fontSize: '0.8rem' }}
     >
-      <span>A new version of the diary is ready.</span>
+      <span>A new version of the archive is ready.</span>
       <button
         onClick={() => window.location.reload()}
         className="rounded border-none cursor-pointer px-2.5 py-1"

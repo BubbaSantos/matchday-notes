@@ -25,12 +25,12 @@ export function Nav() {
           className="font-journal text-sm tracking-wide"
           style={{ color: 'var(--color-ink)' }}
         >
-          Matchday Diary
+          Celtic FC Match Archive
         </span>
       </Link>
 
       <div className="flex items-center gap-1">
-        <NavLink to="/" icon={<BookOpen size={15} />} label="Diary" active={isHome} />
+        <NavLink to="/" icon={<BookOpen size={15} />} label="Archive" active={isHome} />
         <NavLink to="/search" icon={<Search size={15} />} label="Search" active={isSearch} />
       </div>
     </nav>
