@@ -36,6 +36,8 @@ function ResultScore({ match }: { match: MatchEntry }) {
   const color = win ? 'var(--color-win)' : draw ? 'var(--color-draw)' : 'var(--color-loss)'
   const homeScore = match.venue === 'A' ? match.opponentScore : match.celticScore
   const awayScore = match.venue === 'A' ? match.celticScore : match.opponentScore
+  const homePens = pens && (match.venue === 'A' ? pens.opponent : pens.celtic)
+  const awayPens = pens && (match.venue === 'A' ? pens.celtic : pens.opponent)
   return (
     <span className="text-right flex-shrink-0">
       <span className="text-base font-bold font-mono tabular-nums" style={{ color }}>
@@ -43,7 +45,7 @@ function ResultScore({ match }: { match: MatchEntry }) {
       </span>
       {pens && (
         <span className="block font-mono tabular-nums" style={{ color: 'var(--color-ink-faint)', fontSize: '0.65rem' }}>
-          ({pens.celtic}–{pens.opponent} pens)
+          ({homePens}–{awayPens} pens)
         </span>
       )}
     </span>
@@ -122,7 +124,7 @@ export function Search() {
             </div>
             <div className="flex items-center justify-between gap-3 mb-1.5">
               <div className="font-journal" style={{ color: 'var(--color-ink)', fontSize: '0.975rem' }}>
-                Celtic vs {match.opponent}
+                {match.venue === 'A' ? <>{match.opponent} vs Celtic</> : <>Celtic vs {match.opponent}</>}
               </div>
               {match.celticScore !== undefined && match.opponentScore !== undefined && (
                 <ResultScore match={match} />

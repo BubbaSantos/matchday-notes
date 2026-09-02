@@ -143,7 +143,11 @@ export function MatchDay() {
           </span>
         </div>
         <h1 className="font-journal m-0 leading-tight" style={{ color: 'var(--color-ink)', fontSize: '1.5rem' }}>
-          Celtic <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.9em' }}>vs</span> {match.opponent}
+          {match.venue === 'A' ? (
+            <>{match.opponent} <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.9em' }}>vs</span> Celtic</>
+          ) : (
+            <>Celtic <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.9em' }}>vs</span> {match.opponent}</>
+          )}
         </h1>
         <p className="m-0 mt-1" style={{ color: 'var(--color-ink-muted)', fontSize: '0.85rem' }}>
           {long} · KO {time}
@@ -158,11 +162,21 @@ export function MatchDay() {
               className="font-bold font-mono tabular-nums"
               style={{ color: resultColor, fontSize: '3rem', lineHeight: 1 }}
             >
-              {match.celticScore}–{match.opponentScore}
+              {match.venue === 'A' ? match.opponentScore : match.celticScore}
+              –
+              {match.venue === 'A' ? match.celticScore : match.opponentScore}
             </div>
+            {decidedOnPenalties && (
+              <div className="font-mono tabular-nums" style={{ color: resultColor, fontSize: '0.9rem', marginTop: 2 }}>
+                {match.venue === 'A' ? match.penalties!.opponent : match.penalties!.celtic}
+                –
+                {match.venue === 'A' ? match.penalties!.celtic : match.penalties!.opponent}
+                {' '}on penalties
+              </div>
+            )}
             <div style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem', marginTop: 4 }}>
               {decidedOnPenalties
-                ? `${win ? 'Win' : 'Loss'} on penalties (${match.penalties!.celtic}–${match.penalties!.opponent}) · Full time`
+                ? `${win ? 'Win' : 'Loss'} on penalties · Full time`
                 : `${win ? 'Win' : draw ? 'Draw' : 'Loss'} · Full time`}
             </div>
           </div>
