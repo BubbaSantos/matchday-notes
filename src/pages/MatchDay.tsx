@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, MapPin, ChevronDown } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
@@ -122,6 +122,7 @@ function useMatchTables(match: MatchEntry | undefined) {
 
 export function MatchDay() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { fixtures } = useFixtures()
   const match = fixtures.find((m) => m.id === id)
   const { events, loadingEvents } = useMatchEvents(match)
@@ -159,14 +160,14 @@ export function MatchDay() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1.5 no-underline mb-6"
-        style={{ color: 'var(--color-ink-muted)', fontSize: '0.875rem' }}
+      <button
+        onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 border-none cursor-pointer p-0"
+        style={{ background: 'none', color: 'var(--color-ink-muted)', fontSize: '0.875rem', fontFamily: 'inherit', marginBottom: '1.5rem' }}
       >
         <ArrowLeft size={13} />
-        Back to diary
-      </Link>
+        Back
+      </button>
 
       {/* Header card */}
       <div
