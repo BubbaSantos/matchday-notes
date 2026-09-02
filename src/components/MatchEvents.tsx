@@ -77,37 +77,29 @@ function StatBar({
 }
 
 // ── Incident timeline ─────────────────────────────────────────────────────────
+// Two-column layout (Celtic / opponent) with a shared center gutter — minute
+// for every row, plus the running score for goals, so the score-at-the-time
+// reads naturally as you scan down the chronological list.
 
 function minuteStr(inc: SSIncident) {
   if (inc.addedTime) return `${inc.minute}+${inc.addedTime}'`
   return `${inc.minute}'`
 }
 
-function GoalRow({ inc, isCelticHome }: { inc: SSIncident; isCelticHome: boolean }) {
+const ROW_GRID_COLUMNS = '1fr 52px 1fr'
+
+function GoalRow({ inc, isCelticHome, score }: { inc: SSIncident; isCelticHome: boolean; score: string }) {
   const isCeltic = isCelticHome ? inc.isHome : !inc.isHome
   const isPen = inc.scoringType === 'penalty' || inc.incidentClass === 'penalty'
   const isOG = inc.incidentClass === 'ownGoal'
 
-  return (
+  const content = (
     <div
-      className="flex items-start gap-2 py-1.5"
-      style={{ flexDirection: isCeltic ? 'row' : 'row-reverse' }}
+      className="flex items-start gap-2"
+      style={{ flexDirection: isCeltic ? 'row-reverse' : 'row' }}
     >
-      <span
-        className="font-mono flex-shrink-0 pt-0.5"
-        style={{
-          fontSize: '0.7rem',
-          color: 'var(--color-ink-faint)',
-          width: 34,
-          textAlign: isCeltic ? 'left' : 'right',
-        }}
-      >
-        {minuteStr(inc)}
-      </span>
-      <span style={{ fontSize: '0.85rem', lineHeight: 1.5, flexShrink: 0 }}>
-        {'⚽'}
-      </span>
-      <div style={{ flex: 1, textAlign: isCeltic ? 'left' : 'right' }}>
+      <span style={{ fontSize: '0.85rem', lineHeight: 1.5, flexShrink: 0 }}>⚽</span>
+      <div style={{ textAlign: isCeltic ? 'right' : 'left' }}>
         <span
           style={{
             fontSize: '0.82rem',
@@ -126,6 +118,21 @@ function GoalRow({ inc, isCelticHome }: { inc: SSIncident; isCelticHome: boolean
       </div>
     </div>
   )
+
+  return (
+    <div className="grid items-center py-1.5" style={{ gridTemplateColumns: ROW_GRID_COLUMNS }}>
+      <div className="flex" style={{ justifyContent: 'flex-end' }}>{isCeltic ? content : null}</div>
+      <div className="text-center">
+        <div className="font-mono" style={{ fontSize: '0.62rem', color: 'var(--color-ink-faint)' }}>
+          {minuteStr(inc)}
+        </div>
+        <div className="font-mono font-bold tabular-nums" style={{ fontSize: '0.78rem', color: 'var(--color-accent)' }}>
+          {score}
+        </div>
+      </div>
+      <div className="flex" style={{ justifyContent: 'flex-start' }}>{!isCeltic ? content : null}</div>
+    </div>
+  )
 }
 
 function CardRow({ inc, isCelticHome }: { inc: SSIncident; isCelticHome: boolean }) {
@@ -133,33 +140,31 @@ function CardRow({ inc, isCelticHome }: { inc: SSIncident; isCelticHome: boolean
   const isRed = inc.incidentClass === 'red' || inc.incidentClass === 'yellowRed'
   const icon = isRed ? '🟥' : '🟨'
 
-  return (
+  const content = (
     <div
-      className="flex items-center gap-2 py-1"
-      style={{ flexDirection: isCeltic ? 'row' : 'row-reverse' }}
+      className="flex items-center gap-2"
+      style={{ flexDirection: isCeltic ? 'row-reverse' : 'row' }}
     >
-      <span
-        className="font-mono flex-shrink-0"
-        style={{
-          fontSize: '0.7rem',
-          color: 'var(--color-ink-faint)',
-          width: 34,
-          textAlign: isCeltic ? 'left' : 'right',
-        }}
-      >
-        {minuteStr(inc)}
-      </span>
       <span style={{ fontSize: '0.8rem', flexShrink: 0 }}>{icon}</span>
       <span
         style={{
           fontSize: '0.82rem',
           color: isCeltic ? 'var(--color-ink)' : 'var(--color-ink-secondary)',
-          flex: 1,
-          textAlign: isCeltic ? 'left' : 'right',
+          textAlign: isCeltic ? 'right' : 'left',
         }}
       >
         {inc.player ?? ''}
       </span>
+    </div>
+  )
+
+  return (
+    <div className="grid items-center py-1" style={{ gridTemplateColumns: ROW_GRID_COLUMNS }}>
+      <div className="flex" style={{ justifyContent: 'flex-end' }}>{isCeltic ? content : null}</div>
+      <div className="text-center font-mono" style={{ fontSize: '0.62rem', color: 'var(--color-ink-faint)' }}>
+        {minuteStr(inc)}
+      </div>
+      <div className="flex" style={{ justifyContent: 'flex-start' }}>{!isCeltic ? content : null}</div>
     </div>
   )
 }
@@ -179,12 +184,26 @@ function EmptyPanel({ text }: { text: string }) {
 
 export function MatchIncidents({ data, opponentName }: Props) {
   const isCelticHome = data.homeTeamName === 'Celtic'
-  const displayIncidents = data.incidents.filter(
-    (i) => i.type === 'goal' || i.type === 'card'
-  )
+
+  // Chronological (kickoff to full time), so the running score reads
+  // naturally as you scan down — first goal, then an equaliser, etc.
+  const displayIncidents = data.incidents
+    .filter((i) => i.type === 'goal' || i.type === 'card')
+    .sort((a, b) => (a.minute + (a.addedTime ?? 0) / 100) - (b.minute + (b.addedTime ?? 0) / 100))
 
   if (displayIncidents.length === 0) {
     return <EmptyPanel text="No goals or cards to show yet." />
+  }
+
+  // Running score at the time of each goal.
+  const scoreAtGoal = new Map<SSIncident, string>()
+  let celticGoals = 0
+  let oppGoals = 0
+  for (const inc of displayIncidents) {
+    if (inc.type !== 'goal') continue
+    if (isCelticHome ? inc.isHome : !inc.isHome) celticGoals++
+    else oppGoals++
+    scoreAtGoal.set(inc, `${celticGoals}–${oppGoals}`)
   }
 
   return (
@@ -223,7 +242,7 @@ export function MatchIncidents({ data, opponentName }: Props) {
       </div>
       {displayIncidents.map((inc, i) =>
         inc.type === 'goal' ? (
-          <GoalRow key={i} inc={inc} isCelticHome={isCelticHome} />
+          <GoalRow key={i} inc={inc} isCelticHome={isCelticHome} score={scoreAtGoal.get(inc)!} />
         ) : (
           <CardRow key={i} inc={inc} isCelticHome={isCelticHome} />
         )
