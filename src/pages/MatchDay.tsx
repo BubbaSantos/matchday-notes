@@ -254,18 +254,18 @@ function formatPostedAt(iso: string) {
 }
 
 function NotesBlock({
-  text,
+  draft,
+  setDraft,
   postedAt,
+  saving,
   placeholder,
-  onPost,
 }: {
-  text: string
+  draft: string
+  setDraft: (text: string) => void
   postedAt: string | undefined
+  saving: boolean
   placeholder: string
-  onPost: (text: string) => void
 }) {
-  const [editing, setEditing] = useState(!text)
-  const [draft, setDraft] = useState(text)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function autoResize() {
@@ -275,93 +275,37 @@ function NotesBlock({
     el.style.height = `${el.scrollHeight}px`
   }
 
+  // Grow to fit whatever draft was restored (e.g. after switching tabs and
+  // back) as soon as this is mounted, not just on the next keystroke.
   useEffect(() => {
-    if (editing) autoResize()
-  }, [editing])
-
-  function handlePost() {
-    const trimmed = draft.trim()
-    if (!trimmed) return
-    onPost(trimmed)
-    setEditing(false)
-  }
-
-  if (editing) {
-    return (
-      <div>
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => { setDraft(e.target.value); autoResize() }}
-          placeholder={placeholder}
-          rows={1}
-          autoFocus
-          className="font-journal block w-full resize-none leading-relaxed"
-          style={{
-            background: 'none',
-            border: 'none',
-            outline: 'none',
-            color: 'var(--color-ink-secondary)',
-            padding: 0,
-            fontFamily: 'inherit',
-            fontSize: '0.975rem',
-            overflow: 'hidden',
-          }}
-        />
-        <div className="flex items-center gap-2 mt-2">
-          <button
-            onClick={handlePost}
-            disabled={!draft.trim()}
-            className="rounded border-none cursor-pointer px-3 py-1.5"
-            style={{
-              backgroundColor: draft.trim() ? 'var(--color-accent)' : 'var(--color-border)',
-              color: '#fff',
-              fontSize: '0.8rem',
-              fontFamily: 'inherit',
-              opacity: draft.trim() ? 1 : 0.6,
-            }}
-          >
-            Post
-          </button>
-          {text && (
-            <button
-              onClick={() => { setDraft(text); setEditing(false) }}
-              className="rounded border cursor-pointer px-3 py-1.5"
-              style={{
-                background: 'none',
-                borderColor: 'var(--color-border)',
-                color: 'var(--color-ink-muted)',
-                fontSize: '0.8rem',
-                fontFamily: 'inherit',
-              }}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-    )
-  }
+    autoResize()
+  }, [draft])
 
   return (
     <div>
-      <p className="font-journal m-0 leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.975rem' }}>
-        {text}
-      </p>
-      <div className="flex items-center gap-2.5 mt-1.5">
-        {postedAt && (
-          <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.72rem' }}>
-            {formatPostedAt(postedAt)}
-          </span>
-        )}
-        <button
-          onClick={() => { setDraft(text); setEditing(true) }}
-          className="border-none cursor-pointer p-0"
-          style={{ background: 'none', color: 'var(--color-accent)', fontSize: '0.72rem', fontFamily: 'inherit' }}
-        >
-          Edit
-        </button>
-      </div>
+      <textarea
+        ref={textareaRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={placeholder}
+        rows={1}
+        className="font-journal block w-full resize-none leading-relaxed"
+        style={{
+          background: 'none',
+          border: 'none',
+          outline: 'none',
+          color: 'var(--color-ink-secondary)',
+          padding: 0,
+          fontFamily: 'inherit',
+          fontSize: '0.975rem',
+          overflow: 'hidden',
+        }}
+      />
+      {(saving || postedAt) && (
+        <div className="mt-1.5" style={{ color: 'var(--color-ink-faint)', fontSize: '0.72rem' }}>
+          {saving ? 'Saving…' : postedAt && formatPostedAt(postedAt)}
+        </div>
+      )}
     </div>
   )
 }
@@ -648,10 +592,11 @@ function NotesTab({
 
       <Block title="Notes">
         <NotesBlock
-          text={notes.notes}
+          draft={notes.draft}
+          setDraft={notes.setDraft}
           postedAt={notes.notesPostedAt}
+          saving={notes.saving}
           placeholder={isPast ? 'What did you make of it…' : 'How are you feeling about this one…'}
-          onPost={notes.postNotes}
         />
         <div className="mt-2.5">
           <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote(blob, transcript, duration)} />

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as localNotes from '../lib/notesDb'
 import * as remoteNotes from '../lib/notesApi'
 import { useAuth } from './useAuth'
 import type { VoiceNote } from '../types'
 
 export interface MatchNotes {
-  notes: string
+  draft: string
   notesPostedAt?: string
   voiceNotes: VoiceNote[]
   loading: boolean
-  postNotes: (text: string) => void
+  saving: boolean
+  setDraft: (text: string) => void
   saveVoiceNote: (blob: Blob, transcript: string, duration: number) => void
   removeVoiceNote: (id: string) => void
 }
@@ -20,34 +21,62 @@ interface LoadedRecord {
   voiceNotes: VoiceNote[]
 }
 
+const AUTOSAVE_DELAY_MS = 800
+
+// Notes live here (not in the tab component) so the draft survives switching
+// away to Events/Stats/Lineups and back — this hook is created once per
+// match page and never unmounts on tab change.
 export function useMatchNotes(matchKey: string | undefined): MatchNotes {
   const { username } = useAuth()
   const [record, setRecord] = useState<LoadedRecord | null>(null)
+  const [draft, setDraftState] = useState('')
+  const [saving, setSaving] = useState(false)
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const lastSaved = useRef('')
 
   useEffect(() => {
     if (!matchKey) return
     let cancelled = false
     setRecord(null)
+    setDraftState('')
     async function load() {
       if (username) {
         const r = await remoteNotes.getNotes(matchKey!)
-        if (!cancelled) setRecord(r)
+        if (cancelled) return
+        setRecord(r)
+        setDraftState(r.notes)
+        lastSaved.current = r.notes
       } else {
         const r = await localNotes.getNotes(matchKey!)
-        if (!cancelled) setRecord({ notes: r.notes, notesPostedAt: r.notesPostedAt, voiceNotes: r.voiceNotes.map(localNotes.toVoiceNote) })
+        if (cancelled) return
+        const mapped = { notes: r.notes, notesPostedAt: r.notesPostedAt, voiceNotes: r.voiceNotes.map(localNotes.toVoiceNote) }
+        setRecord(mapped)
+        setDraftState(mapped.notes)
+        lastSaved.current = mapped.notes
       }
     }
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      clearTimeout(saveTimer.current)
+    }
   }, [matchKey, username])
 
-  const postNotes = useCallback((text: string) => {
-    if (!matchKey) return
-    const save = username ? remoteNotes.postTextNote(matchKey, text) : localNotes.postTextNote(matchKey, text)
-    save.then((postedAt) => {
+  const save = useCallback((text: string) => {
+    if (!matchKey || text === lastSaved.current) return
+    lastSaved.current = text
+    setSaving(true)
+    const op = username ? remoteNotes.postTextNote(matchKey, text) : localNotes.postTextNote(matchKey, text)
+    op.then((postedAt) => {
       setRecord((prev) => prev && { ...prev, notes: text, notesPostedAt: postedAt })
-    })
+    }).finally(() => setSaving(false))
   }, [matchKey, username])
+
+  const setDraft = useCallback((text: string) => {
+    setDraftState(text)
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => save(text), AUTOSAVE_DELAY_MS)
+  }, [save])
 
   const saveVoiceNote = useCallback((blob: Blob, transcript: string, duration: number) => {
     if (!matchKey) return
@@ -70,11 +99,12 @@ export function useMatchNotes(matchKey: string | undefined): MatchNotes {
   }, [matchKey, username])
 
   return {
-    notes: record?.notes ?? '',
+    draft,
     notesPostedAt: record?.notesPostedAt,
     voiceNotes: record?.voiceNotes ?? [],
     loading: record === null,
-    postNotes,
+    saving,
+    setDraft,
     saveVoiceNote,
     removeVoiceNote,
   }
