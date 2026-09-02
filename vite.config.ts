@@ -137,29 +137,15 @@ export default defineConfig(({ mode }) => {
           handleInjuriesRequest(req, res)
         })
 
-        server.middlewares.use('/api/auth/signup', (req, res, next) => {
-          if (req.method !== 'POST') { next(); return }
-          handleSignup(req, res)
-        })
-
-        server.middlewares.use('/api/auth/login', (req, res, next) => {
-          if (req.method !== 'POST') { next(); return }
-          handleLogin(req, res)
-        })
-
-        server.middlewares.use('/api/auth/logout', (req, res, next) => {
-          if (req.method !== 'POST') { next(); return }
-          handleLogout(req, res)
-        })
-
-        server.middlewares.use('/api/auth/me', (req, res, next) => {
-          if (req.method !== 'GET') { next(); return }
-          handleMe(req, res)
-        })
-
-        server.middlewares.use('/api/notes/save-text', (req, res, next) => {
-          if (req.method !== 'POST') { next(); return }
-          handleSaveText(req, res)
+        // Consolidated (matches api/auth.ts) — routed by ?action=.
+        server.middlewares.use('/api/auth', (req, res, next) => {
+          const url = new URL(req.url!, 'http://localhost')
+          const action = url.searchParams.get('action')
+          if (req.method === 'GET' && action === 'me') { handleMe(req, res); return }
+          if (req.method === 'POST' && action === 'signup') { handleSignup(req, res); return }
+          if (req.method === 'POST' && action === 'login') { handleLogin(req, res); return }
+          if (req.method === 'POST' && action === 'logout') { handleLogout(req, res); return }
+          next()
         })
 
         server.middlewares.use('/api/notes/voice', (req, res, next) => {
@@ -168,12 +154,14 @@ export default defineConfig(({ mode }) => {
           next()
         })
 
-        server.middlewares.use('/api/notes/import', (req, res, next) => {
+        // Consolidated (matches api/notes-write.ts) — routed by ?kind=.
+        server.middlewares.use('/api/notes-write', (req, res, next) => {
           if (req.method !== 'POST') { next(); return }
-          handleImport(req, res)
+          const url = new URL(req.url!, 'http://localhost')
+          if (url.searchParams.get('kind') === 'import') { handleImport(req, res); return }
+          handleSaveText(req, res)
         })
 
-        // Must be registered after the more specific /api/notes/* routes above.
         server.middlewares.use('/api/notes', (req, res, next) => {
           if (req.method !== 'GET') { next(); return }
           handleGetNotes(req, res)

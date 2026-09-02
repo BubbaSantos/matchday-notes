@@ -26,7 +26,7 @@ export async function getNotes(matchKey: string): Promise<RemoteNotesRecord> {
 }
 
 export async function postTextNote(matchKey: string, text: string): Promise<string> {
-  const res = await fetch('/api/notes/save-text', {
+  const res = await fetch('/api/notes-write', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -59,7 +59,7 @@ export interface LocalNotesForImport {
 }
 
 export async function importNotes(notes: Record<string, LocalNotesForImport>): Promise<void> {
-  await fetch('/api/notes/import', {
+  await fetch('/api/notes-write?kind=import', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
