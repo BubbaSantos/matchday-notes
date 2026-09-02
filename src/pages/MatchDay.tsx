@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, MapPin, ChevronDown } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { useMatchNotes, type MatchNotes } from '../hooks/useMatchNotes'
@@ -266,6 +266,18 @@ function NotesBlock({
 }) {
   const [editing, setEditing] = useState(!text)
   const [draft, setDraft] = useState(text)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  function autoResize() {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }
+
+  useEffect(() => {
+    if (editing) autoResize()
+  }, [editing])
 
   function handlePost() {
     const trimmed = draft.trim()
@@ -278,18 +290,22 @@ function NotesBlock({
     return (
       <div>
         <textarea
+          ref={textareaRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); autoResize() }}
           placeholder={placeholder}
-          rows={3}
+          rows={1}
           autoFocus
-          className="font-journal w-full rounded border resize-y leading-relaxed"
+          className="font-journal block w-full resize-none leading-relaxed"
           style={{
-            backgroundColor: 'var(--color-surface)',
-            borderColor: 'var(--color-border)',
+            background: 'none',
+            border: 'none',
+            outline: 'none',
             color: 'var(--color-ink-secondary)',
-            padding: '0.6rem 0.75rem',
+            padding: 0,
             fontFamily: 'inherit',
+            fontSize: '0.975rem',
+            overflow: 'hidden',
           }}
         />
         <div className="flex items-center gap-2 mt-2">
