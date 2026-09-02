@@ -8,7 +8,9 @@ import type { MatchEntry } from '../types'
 function searchMatches(fixtures: MatchEntry[], query: string) {
   if (!query.trim()) return []
   const q = query.toLowerCase()
-  return fixtures.flatMap((match) => {
+  const results = fixtures.flatMap((match) => {
+    if (match.phase !== 'post') return [] // only played games
+
     const snippets: string[] = []
     if (match.preNotes?.toLowerCase().includes(q)) snippets.push(match.preNotes)
     if (match.postNotes?.toLowerCase().includes(q)) snippets.push(match.postNotes)
@@ -23,6 +25,21 @@ function searchMatches(fixtures: MatchEntry[], query: string) {
 
     return snippets.length > 0 || matchesFixtureInfo ? [{ match, snippets }] : []
   })
+
+  return results.sort((a, b) => new Date(b.match.kickoff).getTime() - new Date(a.match.kickoff).getTime())
+}
+
+function ResultScore({ match }: { match: MatchEntry }) {
+  const win = match.celticScore! > match.opponentScore!
+  const draw = match.celticScore === match.opponentScore
+  const color = win ? 'var(--color-win)' : draw ? 'var(--color-draw)' : 'var(--color-loss)'
+  const homeScore = match.venue === 'A' ? match.opponentScore : match.celticScore
+  const awayScore = match.venue === 'A' ? match.celticScore : match.opponentScore
+  return (
+    <span className="text-base font-bold font-mono tabular-nums flex-shrink-0" style={{ color }}>
+      {homeScore}–{awayScore}
+    </span>
+  )
 }
 
 function highlight(text: string, query: string) {
@@ -52,7 +69,7 @@ export function Search() {
           Search
         </h1>
         <p className="m-0 mt-0.5" style={{ color: 'var(--color-ink-muted)', fontSize: '0.85rem' }}>
-          Across all match notes and voice transcripts.
+          Played matches, notes, and voice transcripts.
         </p>
       </div>
 
@@ -95,8 +112,13 @@ export function Search() {
                 {new Date(match.kickoff).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
             </div>
-            <div className="font-journal mb-1.5" style={{ color: 'var(--color-ink)', fontSize: '0.975rem' }}>
-              Celtic vs {match.opponent}
+            <div className="flex items-center justify-between gap-3 mb-1.5">
+              <div className="font-journal" style={{ color: 'var(--color-ink)', fontSize: '0.975rem' }}>
+                Celtic vs {match.opponent}
+              </div>
+              {match.celticScore !== undefined && match.opponentScore !== undefined && (
+                <ResultScore match={match} />
+              )}
             </div>
             {snippets.map((s, i) => (
               <p key={i} className="m-0 mt-1 leading-relaxed" style={{ color: 'var(--color-ink-muted)', fontSize: '0.85rem' }}>
