@@ -2,13 +2,13 @@ import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, MapPin, ChevronDown } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
-import { useMatchNotes } from '../hooks/useMatchNotes'
+import { useMatchNotes, type MatchNotes } from '../hooks/useMatchNotes'
 import { fetchLeagueTable } from '../lib/table'
 import { fetchMatchEvents } from '../lib/matchEvents'
 import { stableMatchKey } from '../lib/matchKey'
 import { CompetitionBadge } from '../components/CompetitionBadge'
 import { LeagueTable } from '../components/LeagueTable'
-import { MatchEvents } from '../components/MatchEvents'
+import { MatchIncidents, MatchStats } from '../components/MatchEvents'
 import { Lineups } from '../components/Lineups'
 import { VoiceRecorder } from '../components/VoiceRecorder'
 import { VoiceNoteList } from '../components/VoiceNoteList'
@@ -240,119 +240,17 @@ export function MatchDay() {
           />
         )}
 
-        {/* Match events and stats — same card, below the table */}
-        {(loadingEvents || events) && (
-          <CollapsibleEvents key={match.id} loading={loadingEvents} events={events} opponentName={match.opponent} isPast={isPast} />
-        )}
       </div>
 
-      {/* Notes timeline */}
-      <div className="relative mt-1">
-        <div
-          className="absolute top-0 bottom-0 w-px"
-          style={{ left: 16, backgroundColor: 'var(--color-border-subtle)' }}
-        />
-
-        <Section label="Before Kickoff" dot={isPast ? 'filled' : 'empty'}>
-          {match.injuries && match.injuries.length > 0 && (
-            <Block title="Injury News">
-              <div className="space-y-1.5">
-                {match.injuries.map((inj) => (
-                  <div
-                    key={inj.playerName}
-                    className="flex justify-between rounded border px-3 py-2 text-sm"
-                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
-                  >
-                    <span>
-                      <span style={{ color: 'var(--color-ink)' }}>{inj.playerName}</span>
-                      <span className="ml-1.5" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>{inj.position}</span>
-                    </span>
-                    <span style={{ color: 'var(--color-draw)', fontSize: '0.8rem' }}>
-                      {inj.injury}{inj.returnDate ? ` · ${inj.returnDate}` : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Block>
-          )}
-          <Block title="Pre-match notes">
-            <NotesBlock
-              key={`${match.id}-pre`}
-              text={notes.preNotes}
-              postedAt={notes.preNotesPostedAt}
-              placeholder="How are you feeling about this one…"
-              onPost={notes.postPreNotes}
-            />
-            <div className="mt-2.5">
-              <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('pre', blob, transcript, duration)} />
-            </div>
-            {notes.preVoiceNotes.length > 0 && (
-              <div className="mt-2.5">
-                <VoiceNoteList notes={notes.preVoiceNotes} onDelete={(id) => notes.removeVoiceNote('pre', id)} />
-              </div>
-            )}
-          </Block>
-        </Section>
-
-        {isPast && (
-          <Section label="After the Match" dot="filled">
-            <Block title="Post-match notes">
-              <NotesBlock
-                key={`${match.id}-post`}
-                text={notes.postNotes}
-                postedAt={notes.postNotesPostedAt}
-                placeholder="What did you make of it…"
-                onPost={notes.postPostNotes}
-              />
-              <div className="mt-2.5">
-                <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('post', blob, transcript, duration)} />
-              </div>
-              {notes.postVoiceNotes.length > 0 && (
-                <div className="mt-2.5">
-                  <VoiceNoteList notes={notes.postVoiceNotes} onDelete={(id) => notes.removeVoiceNote('post', id)} />
-                </div>
-              )}
-            </Block>
-          </Section>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function Section({
-  label,
-  dot,
-  children,
-}: {
-  label: string
-  dot: 'filled' | 'empty'
-  children: React.ReactNode
-}) {
-  return (
-    <div className="relative pl-10 pt-7 pb-1">
-      <div
-        className="absolute w-4 h-4 rounded-full border-2"
-        style={{
-          left: 8,
-          top: 28,
-          borderColor: dot === 'filled' ? 'var(--color-accent)' : 'var(--color-border)',
-          backgroundColor: dot === 'filled' ? 'var(--color-accent)' : 'var(--color-surface)',
-          zIndex: 1,
-        }}
+      {/* Events / Stats / Lineups / Notes */}
+      <MatchTabs
+        key={match.id}
+        match={match}
+        events={events}
+        loadingEvents={loadingEvents}
+        isPast={isPast}
+        notes={notes}
       />
-      <div
-        className="font-medium mb-4"
-        style={{
-          color: 'var(--color-ink-muted)',
-          fontSize: '0.7rem',
-          textTransform: 'uppercase',
-          letterSpacing: '0.1em',
-        }}
-      >
-        {label}
-      </div>
-      <div className="space-y-4">{children}</div>
     </div>
   )
 }
@@ -602,96 +500,178 @@ function InlineLeagueTable({
   )
 }
 
-type EventsTab = 'events' | 'lineups'
+type MatchTab = 'events' | 'stats' | 'lineups' | 'notes'
 
-function CollapsibleEvents({
-  loading,
+function MatchTabs({
+  match,
   events,
-  opponentName,
+  loadingEvents,
   isPast,
+  notes,
 }: {
-  loading: boolean
+  match: MatchEntry
   events: SSMatchData | null
-  opponentName: string
+  loadingEvents: boolean
   isPast: boolean
+  notes: MatchNotes
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const [tab, setTab] = useState<EventsTab>('events')
+  const hasLineups = !!events && (events.homeLineup.players.length > 0 || events.awayLineup.players.length > 0)
 
-  const hasLineups =
-    events &&
-    (events.homeLineup.players.length > 0 || events.awayLineup.players.length > 0)
+  const [tab, setTab] = useState<MatchTab>(isPast ? 'events' : 'notes')
 
   // Pre-match, the whole point of polling is to surface the lineup the
   // moment it's out — jump straight to it instead of making the user notice
   // and click through.
   useEffect(() => {
-    if (!isPast && hasLineups) {
-      setExpanded(true)
-      setTab('lineups')
-    }
+    if (!isPast && hasLineups) setTab('lineups')
   }, [isPast, hasLineups])
 
+  const tabs: { key: MatchTab; label: string }[] = [
+    { key: 'events', label: 'Events' },
+    { key: 'stats', label: 'Stats' },
+    { key: 'lineups', label: 'Lineups' },
+    { key: 'notes', label: 'Notes' },
+  ]
+
   return (
-    <div
-      className="border-t mt-4 pt-3"
-      style={{ borderColor: 'var(--color-border-subtle)', marginInline: '-1.25rem', paddingInline: '1.25rem' }}
-    >
-      {loading ? (
-        <div className="space-y-2">
-          <div className="rounded h-20 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
-          <div className="rounded h-24 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+    <div className="mt-4">
+      <div className="flex" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="border-none cursor-pointer px-0 py-2 mr-5"
+            style={{
+              background: 'none',
+              fontFamily: 'inherit',
+              fontSize: '0.68rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: tab === t.key ? 'var(--color-ink)' : 'var(--color-ink-faint)',
+              fontWeight: tab === t.key ? 600 : 400,
+              borderBottom: tab === t.key ? '2px solid var(--color-accent)' : '2px solid transparent',
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="pt-4">
+        {tab === 'events' && (
+          loadingEvents ? (
+            <div className="rounded h-20 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+          ) : events ? (
+            <MatchIncidents data={events} opponentName={match.opponent} />
+          ) : (
+            <EmptyTabMessage isPast={isPast} thing="events" />
+          )
+        )}
+
+        {tab === 'stats' && (
+          loadingEvents ? (
+            <div className="rounded h-24 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+          ) : events ? (
+            <MatchStats data={events} />
+          ) : (
+            <EmptyTabMessage isPast={isPast} thing="stats" />
+          )
+        )}
+
+        {tab === 'lineups' && (
+          loadingEvents ? (
+            <div className="rounded h-40 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+          ) : hasLineups ? (
+            <Lineups data={events!} />
+          ) : (
+            <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.85rem' }}>
+              {isPast ? 'No lineup available for this match.' : "Lineup isn't out yet — checking automatically every 5 minutes from 75 minutes before kickoff."}
+            </p>
+          )
+        )}
+
+        {tab === 'notes' && <NotesTab match={match} isPast={isPast} notes={notes} />}
+      </div>
+    </div>
+  )
+}
+
+function EmptyTabMessage({ isPast, thing }: { isPast: boolean; thing: string }) {
+  return (
+    <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.85rem' }}>
+      {isPast ? `No ${thing} available for this match.` : `No ${thing} to show yet.`}
+    </p>
+  )
+}
+
+function NotesTab({
+  match,
+  isPast,
+  notes,
+}: {
+  match: MatchEntry
+  isPast: boolean
+  notes: MatchNotes
+}) {
+  return (
+    <div className="space-y-6">
+      {match.injuries && match.injuries.length > 0 && (
+        <Block title="Injury News">
+          <div className="space-y-1.5">
+            {match.injuries.map((inj) => (
+              <div
+                key={inj.playerName}
+                className="flex justify-between rounded border px-3 py-2 text-sm"
+                style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+              >
+                <span>
+                  <span style={{ color: 'var(--color-ink)' }}>{inj.playerName}</span>
+                  <span className="ml-1.5" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>{inj.position}</span>
+                </span>
+                <span style={{ color: 'var(--color-draw)', fontSize: '0.8rem' }}>
+                  {inj.injury}{inj.returnDate ? ` · ${inj.returnDate}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Block>
+      )}
+
+      <Block title="Pre-match notes">
+        <NotesBlock
+          text={notes.preNotes}
+          postedAt={notes.preNotesPostedAt}
+          placeholder="How are you feeling about this one…"
+          onPost={notes.postPreNotes}
+        />
+        <div className="mt-2.5">
+          <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('pre', blob, transcript, duration)} />
         </div>
-      ) : !events ? null : !expanded ? (
-        <button
-          onClick={() => setExpanded(true)}
-          className="w-full border-none cursor-pointer py-1.5 flex items-center justify-between"
-          style={{ background: 'none', fontFamily: 'inherit' }}
-        >
-          <span style={{ fontSize: '0.72rem', color: 'var(--color-ink-faint)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Match events & stats
-          </span>
-          <ChevronDown size={13} style={{ color: 'var(--color-ink-faint)' }} />
-        </button>
-      ) : (
-        <>
-          {/* Tab row */}
-          {hasLineups && (
-            <div className="flex mb-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-              {(['events', 'lineups'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="border-none cursor-pointer px-0 py-1 mr-4"
-                  style={{
-                    background: 'none',
-                    fontFamily: 'inherit',
-                    fontSize: '0.62rem',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                    color: tab === t ? 'var(--color-ink)' : 'var(--color-ink-faint)',
-                    fontWeight: tab === t ? 600 : 400,
-                    borderBottom: tab === t ? '2px solid var(--color-accent)' : '2px solid transparent',
-                    marginBottom: -1,
-                  }}
-                >
-                  {t === 'events' ? 'Events & Stats' : 'Lineups'}
-                </button>
-              ))}
+        {notes.preVoiceNotes.length > 0 && (
+          <div className="mt-2.5">
+            <VoiceNoteList notes={notes.preVoiceNotes} onDelete={(id) => notes.removeVoiceNote('pre', id)} />
+          </div>
+        )}
+      </Block>
+
+      {isPast && (
+        <Block title="Post-match notes">
+          <NotesBlock
+            text={notes.postNotes}
+            postedAt={notes.postNotesPostedAt}
+            placeholder="What did you make of it…"
+            onPost={notes.postPostNotes}
+          />
+          <div className="mt-2.5">
+            <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('post', blob, transcript, duration)} />
+          </div>
+          {notes.postVoiceNotes.length > 0 && (
+            <div className="mt-2.5">
+              <VoiceNoteList notes={notes.postVoiceNotes} onDelete={(id) => notes.removeVoiceNote('post', id)} />
             </div>
           )}
-
-          {tab === 'events' && <MatchEvents data={events} opponentName={opponentName} />}
-          {tab === 'lineups' && hasLineups && <Lineups data={events!} />}
-
-          <button
-            onClick={() => setExpanded(false)}
-            className="w-full text-center border-none cursor-pointer mt-3 py-1"
-            style={{ background: 'none', color: 'var(--color-ink-faint)', fontSize: '0.72rem', fontFamily: 'inherit' }}
-          >
-            Show less ↑
-          </button>
-        </>
+        </Block>
       )}
     </div>
   )

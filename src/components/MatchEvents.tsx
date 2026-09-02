@@ -169,114 +169,95 @@ interface Props {
   opponentName: string
 }
 
-export function MatchEvents({ data, opponentName }: Props) {
-  const isCelticHome = data.homeTeamName === 'Celtic'
-  const celticLabel = 'Celtic'
-  const oppLabel = opponentName
+function EmptyPanel({ text }: { text: string }) {
+  return (
+    <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.85rem' }}>
+      {text}
+    </p>
+  )
+}
 
+export function MatchIncidents({ data, opponentName }: Props) {
+  const isCelticHome = data.homeTeamName === 'Celtic'
   const displayIncidents = data.incidents.filter(
     (i) => i.type === 'goal' || i.type === 'card'
   )
 
-  // Find stats to show
+  if (displayIncidents.length === 0) {
+    return <EmptyPanel text="No goals or cards to show yet." />
+  }
+
+  return (
+    <div
+      className="rounded border px-3 py-1"
+      style={{
+        backgroundColor: 'var(--color-surface)',
+        borderColor: 'var(--color-border)',
+      }}
+    >
+      <div
+        className="flex justify-between pb-1 mb-1"
+        style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+      >
+        <span
+          style={{
+            fontSize: '0.65rem',
+            color: 'var(--color-accent)',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+          }}
+        >
+          Celtic
+        </span>
+        <span
+          style={{
+            fontSize: '0.65rem',
+            color: 'var(--color-ink-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+          }}
+        >
+          {opponentName}
+        </span>
+      </div>
+      {displayIncidents.map((inc, i) =>
+        inc.type === 'goal' ? (
+          <GoalRow key={i} inc={inc} isCelticHome={isCelticHome} />
+        ) : (
+          <CardRow key={i} inc={inc} isCelticHome={isCelticHome} />
+        )
+      )}
+    </div>
+  )
+}
+
+export function MatchStats({ data }: { data: SSMatchData }) {
+  const isCelticHome = data.homeTeamName === 'Celtic'
   const statIndex = new Map(data.stats.map((s) => [s.name, s]))
   const visibleStats = STAT_KEYS.map((k) => statIndex.get(k)).filter(Boolean) as typeof data.stats
 
-  return (
-    <div className="space-y-5">
-      {/* Incident timeline */}
-      {displayIncidents.length > 0 && (
-        <div>
-          <div
-            className="mb-2"
-            style={{
-              fontSize: '0.62rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: 'var(--color-ink-faint)',
-              fontWeight: 500,
-            }}
-          >
-            Timeline
-          </div>
-          <div
-            className="rounded border px-3 py-1"
-            style={{
-              backgroundColor: 'var(--color-surface)',
-              borderColor: 'var(--color-border)',
-            }}
-          >
-            <div
-              className="flex justify-between pb-1 mb-1"
-              style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
-            >
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  color: 'var(--color-accent)',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                }}
-              >
-                {celticLabel}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  color: 'var(--color-ink-muted)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                }}
-              >
-                {oppLabel}
-              </span>
-            </div>
-            {displayIncidents.map((inc, i) =>
-              inc.type === 'goal' ? (
-                <GoalRow key={i} inc={inc} isCelticHome={isCelticHome} />
-              ) : (
-                <CardRow key={i} inc={inc} isCelticHome={isCelticHome} />
-              )
-            )}
-          </div>
-        </div>
-      )}
+  if (visibleStats.length === 0) {
+    return <EmptyPanel text="No stats to show yet." />
+  }
 
-      {/* Stats bars */}
-      {visibleStats.length > 0 && (
-        <div>
-          <div
-            className="mb-3"
-            style={{
-              fontSize: '0.62rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: 'var(--color-ink-faint)',
-              fontWeight: 500,
-            }}
-          >
-            Stats
-          </div>
-          <div
-            className="rounded border px-4 py-3"
-            style={{
-              backgroundColor: 'var(--color-surface)',
-              borderColor: 'var(--color-border)',
-            }}
-          >
-            {visibleStats.map((s) => (
-              <StatBar
-                key={s.name}
-                label={s.name}
-                homeVal={s.home}
-                awayVal={s.away}
-                isCelticHome={isCelticHome}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+  return (
+    <div
+      className="rounded border px-4 py-3"
+      style={{
+        backgroundColor: 'var(--color-surface)',
+        borderColor: 'var(--color-border)',
+      }}
+    >
+      {visibleStats.map((s) => (
+        <StatBar
+          key={s.name}
+          label={s.name}
+          homeVal={s.home}
+          awayVal={s.away}
+          isCelticHome={isCelticHome}
+        />
+      ))}
     </div>
   )
 }
