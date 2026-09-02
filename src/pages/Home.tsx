@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { FixtureCard } from '../components/FixtureCard'
@@ -11,8 +12,39 @@ type Section = 'upcoming' | 'played'
 
 export function Home() {
   const { fixtures, standing, loading, error, refresh } = useFixtures()
-  const [filter, setFilter] = useState<Filter>('all')
-  const [section, setSection] = useState<Section>('upcoming')
+
+  // Filter/section/season live in the URL, not component state — otherwise
+  // navigating to a match and back (which remounts Home) loses whatever you
+  // had selected and resets to the defaults.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const currentSeasonLabel = getSeason(new Date().toISOString())
+  const filter = (searchParams.get('comp') as Filter) || 'all'
+  const section = (searchParams.get('section') as Section) || 'upcoming'
+  const selectedSeason = searchParams.get('season') || currentSeasonLabel
+
+  function setFilter(f: Filter) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (f === 'all') next.delete('comp'); else next.set('comp', f)
+      return next
+    }, { replace: true })
+  }
+
+  function setSection(s: Section) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (s === 'upcoming') next.delete('section'); else next.set('section', s)
+      return next
+    }, { replace: true })
+  }
+
+  function setSelectedSeason(s: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (s === currentSeasonLabel) next.delete('season'); else next.set('season', s)
+      return next
+    }, { replace: true })
+  }
 
   const competitions = Array.from(new Set(fixtures.map((f) => f.competition))) as Competition[]
   const filtered = filter === 'all' ? fixtures : fixtures.filter((m) => m.competition === filter)
@@ -20,7 +52,6 @@ export function Home() {
   const past = filtered
     .filter((m) => m.phase === 'post')
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()) // newest first
-  const currentSeasonLabel = getSeason(new Date().toISOString())
   const currentSeasonCount = past.filter((m) => getSeason(m.kickoff) === currentSeasonLabel).length
 
   // All seasons present in the played fixtures, newest first
@@ -30,7 +61,6 @@ export function Home() {
     return [...set]
   }, [past])
 
-  const [selectedSeason, setSelectedSeason] = useState<string>(currentSeasonLabel)
   const seasonFixtures = past.filter((m) => getSeason(m.kickoff) === selectedSeason)
 
   // If upcoming is empty (e.g. end of season) and we haven't manually picked a section, switch to played

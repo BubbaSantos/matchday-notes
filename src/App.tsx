@@ -3,11 +3,16 @@ import { Nav } from './components/Nav'
 import { Home } from './pages/Home'
 import { MatchDay } from './pages/MatchDay'
 import { Search } from './pages/Search'
+import { UpdateBanner } from './components/UpdateBanner'
+import { useAppUpdate } from './hooks/useAppUpdate'
 
 function App() {
+  const updateAvailable = useAppUpdate()
+
   return (
     <BrowserRouter>
       <div className="min-h-screen" style={{ backgroundColor: 'var(--color-pitch)' }}>
+        {updateAvailable && <UpdateBanner />}
         <Nav />
         <main>
           <Routes>
