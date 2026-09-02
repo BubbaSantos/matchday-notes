@@ -4,7 +4,7 @@ import { useFixtures } from '../hooks/useFixtures'
 import { FixtureCard } from '../components/FixtureCard'
 import { LeagueTable } from '../components/LeagueTable'
 import { fetchLeagueTable } from '../lib/table'
-import type { Competition, LeagueStanding, MatchEntry, TableRow } from '../types'
+import type { Competition, LeagueStanding, TableRow } from '../types'
 
 type Filter = 'all' | Competition
 type Section = 'upcoming' | 'played'
@@ -20,6 +20,16 @@ export function Home() {
   const past = filtered.filter((m) => m.phase === 'post') // already newest-first from espn.ts sort
   const currentSeasonLabel = getSeason(new Date().toISOString())
   const currentSeasonCount = past.filter((m) => getSeason(m.kickoff) === currentSeasonLabel).length
+
+  // All seasons present in the played fixtures, newest first
+  const seasons = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of past) set.add(getSeason(m.kickoff))
+    return [...set]
+  }, [past])
+
+  const [selectedSeason, setSelectedSeason] = useState<string>(currentSeasonLabel)
+  const seasonFixtures = past.filter((m) => getSeason(m.kickoff) === selectedSeason)
 
   // If upcoming is empty (e.g. end of season) and we haven't manually picked a section, switch to played
   useEffect(() => {
@@ -97,19 +107,27 @@ export function Home() {
 
       {/* Section toggle tabs */}
       {!loading && (upcoming.length > 0 || past.length > 0) && (
-        <div className="flex gap-0 mb-6" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <SectionTab
-            label="Upcoming"
-            count={upcoming.length}
-            active={section === 'upcoming'}
-            onClick={() => setSection('upcoming')}
-          />
-          <SectionTab
-            label="Played"
-            count={currentSeasonCount}
-            active={section === 'played'}
-            onClick={() => setSection('played')}
-          />
+        <div
+          className="flex items-center justify-between gap-3 mb-6"
+          style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+        >
+          <div className="flex gap-0">
+            <SectionTab
+              label="Upcoming"
+              count={upcoming.length}
+              active={section === 'upcoming'}
+              onClick={() => setSection('upcoming')}
+            />
+            <SectionTab
+              label="Played"
+              count={section === 'played' ? seasonFixtures.length : currentSeasonCount}
+              active={section === 'played'}
+              onClick={() => setSection('played')}
+            />
+          </div>
+          {section === 'played' && seasons.length > 1 && (
+            <SeasonPicker seasons={seasons} value={selectedSeason} onChange={setSelectedSeason} />
+          )}
         </div>
       )}
 
@@ -128,15 +146,17 @@ export function Home() {
         </section>
       )}
 
-      {/* Past — grouped by season */}
+      {/* Past — filtered to the selected season */}
       {!loading && section === 'played' && (
         <section>
-          {past.length === 0 ? (
+          {seasonFixtures.length === 0 ? (
             <p className="text-center py-12" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>
-              No played fixtures.
+              No played fixtures{selectedSeason ? ` in ${selectedSeason}` : ''}.
             </p>
           ) : (
-            <SeasonGroupedFixtures matches={past} />
+            seasonFixtures.map((m, i) => (
+              <FixtureCard key={m.id} match={m} isLast={i === seasonFixtures.length - 1} />
+            ))
           )}
         </section>
       )}
@@ -150,75 +170,45 @@ export function Home() {
   )
 }
 
-function SeasonGroupedFixtures({ matches }: { matches: MatchEntry[] }) {
-  // Group into seasons (newest-first order preserved within each group)
-  const seasons = useMemo(() => {
-    const map = new Map<string, MatchEntry[]>()
-    for (const m of matches) {
-      const s = getSeason(m.kickoff)
-      if (!map.has(s)) map.set(s, [])
-      map.get(s)!.push(m)
-    }
-    // Map preserves insertion order — matches are newest-first so first season seen is current
-    return [...map.entries()] // [season, matches[]]
-  }, [matches])
-
-  const currentSeason = seasons[0]?.[0] ?? ''
-  // Keep current season open, collapse past ones
-  const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(seasons.slice(1).map(([s]) => s))
-  )
-
-  function toggle(season: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(season)) next.delete(season)
-      else next.add(season)
-      return next
-    })
-  }
-
+function SeasonPicker({
+  seasons,
+  value,
+  onChange,
+}: {
+  seasons: string[]
+  value: string
+  onChange: (season: string) => void
+}) {
   return (
-    <div>
-      {seasons.map(([season, seasonMatches], si) => {
-        const isCollapsed = collapsed.has(season)
-        return (
-          <div key={season}>
-            {/* Season header */}
-            <button
-              onClick={() => toggle(season)}
-              className="w-full flex items-center gap-3 border-none cursor-pointer px-0 py-3"
-              style={{ background: 'none', fontFamily: 'inherit' }}
-            >
-              <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
-              <span
-                style={{
-                  color: si === 0 ? 'var(--color-ink-muted)' : 'var(--color-ink-faint)',
-                  fontSize: '0.65rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.12em',
-                  fontWeight: si === 0 ? 600 : 400,
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                {season}
-                <span style={{ fontSize: '0.6rem', color: 'var(--color-ink-faint)' }}>
-                  {isCollapsed ? '▸' : '▾'}
-                </span>
-              </span>
-              <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
-            </button>
-
-            {/* Season fixtures */}
-            {!isCollapsed && seasonMatches.map((m, i) => (
-              <FixtureCard key={m.id} match={m} isLast={i === seasonMatches.length - 1} />
-            ))}
-          </div>
-        )
-      })}
+    <div className="relative mb-2" style={{ flexShrink: 0 }}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="appearance-none rounded border cursor-pointer pl-2.5 pr-6 py-1 text-xs"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          borderColor: 'var(--color-border)',
+          color: 'var(--color-ink-muted)',
+          fontFamily: 'inherit',
+        }}
+      >
+        {seasons.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={12}
+        style={{
+          position: 'absolute',
+          right: 7,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          color: 'var(--color-ink-faint)',
+          pointerEvents: 'none',
+        }}
+      />
     </div>
   )
 }
