@@ -435,12 +435,9 @@ async function handleHistoricalFixturesRequest(_req: IncomingMessage, res: Serve
   }
 }
 
-const SPFL_SCRIPT = path.resolve(
-  process.env.HOME!,
-  'repos/quickshell-config/scripts/spfl-fixtures'
-)
-const LEAGUE_CUP_ICS = path.resolve(process.env.HOME!, 'Sync/quickshell/league-cup.ics')
-const SCOTTISH_CUP_ICS = path.resolve(process.env.HOME!, 'Sync/quickshell/scottish-cup.ics')
+const SPFL_SCRIPT = path.resolve(__dirname, 'scripts/spfl-fixtures')
+const LEAGUE_CUP_ICS = path.resolve(__dirname, 'data/league-cup.ics')
+const SCOTTISH_CUP_ICS = path.resolve(__dirname, 'data/scottish-cup.ics')
 
 const STADIUM_MAP: Record<string, string> = {
   'Celtic':                    'Celtic Park',
