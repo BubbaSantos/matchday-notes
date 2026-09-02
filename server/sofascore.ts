@@ -9,6 +9,7 @@
 // SCRAPERAPI_KEY isn't configured.
 import { gotScraping } from 'got-scraping'
 import { normalizeRound } from './fixtures.js'
+import { cacheGet, cacheSet } from './cache.js'
 
 const CELTIC_SS_ID = 2352
 const SS_FETCH_ATTEMPTS = 4
@@ -135,8 +136,23 @@ const SS_PAGE_BATCH_SIZE = 5 // fetch pages concurrently in batches — this loo
 
 type SSEventPage = { events?: Record<string, unknown>[] } | null
 
+const SS_INDEX_CACHE_KEY = 'ss:index:v1'
+const SS_INDEX_TTL_SECONDS = 6 * 60 * 60
+
 async function ensureSofascorePages(): Promise<void> {
   if (Date.now() < ssPageCacheExpiry) return
+
+  // Check the persistent cache before doing an expensive rebuild — this is
+  // what actually survives cold starts and deploys, unlike the in-memory
+  // vars above (which only help within a single warm invocation).
+  const cached = await cacheGet<{ dateMap: [string, number][]; fixtures: SSFixture[] }>(SS_INDEX_CACHE_KEY)
+  if (cached) {
+    ssDateMap.clear()
+    for (const [date, id] of cached.dateMap) ssDateMap.set(date, id)
+    historicalFixturesCache = cached.fixtures
+    ssPageCacheExpiry = Date.now() + SS_INDEX_TTL_SECONDS * 1000
+    return
+  }
 
   ssDateMap.clear()
   const fixtures: SSFixture[] = []
@@ -230,8 +246,9 @@ async function ensureSofascorePages(): Promise<void> {
 
   if (firstPageFailed) return
 
-  ssPageCacheExpiry = Date.now() + 6 * 60 * 60 * 1000
+  ssPageCacheExpiry = Date.now() + SS_INDEX_TTL_SECONDS * 1000
   historicalFixturesCache = fixtures
+  await cacheSet(SS_INDEX_CACHE_KEY, { dateMap: [...ssDateMap.entries()], fixtures }, SS_INDEX_TTL_SECONDS)
 }
 
 export async function getHistoricalFixtures(): Promise<SSFixture[]> {
@@ -259,6 +276,10 @@ export function matchEventsCacheControl(date: string): string {
 export async function fetchSofascoreData(date: string): Promise<SSData | null> {
   const eventId = await getSofascoreId(date)
   if (!eventId) return null
+
+  const cacheKey = `ss:match:${date}`
+  const cached = await cacheGet<SSData>(cacheKey)
+  if (cached) return cached
 
   const base = `https://api.sofascore.com/api/v1/event/${eventId}`
 
@@ -381,7 +402,7 @@ export async function fetchSofascoreData(date: string): Promise<SSData | null> {
   const seen = new Set<string>()
   const stats = statItems.filter((s) => { if (seen.has(s.name)) return false; seen.add(s.name); return true })
 
-  return {
+  const result: SSData = {
     incidents,
     homeLineup: parseSide(homeRaw),
     awayLineup: parseSide(awayRaw),
@@ -393,4 +414,12 @@ export async function fetchSofascoreData(date: string): Promise<SSData | null> {
     xG,
     confirmed,
   }
+
+  // A finished match's data never changes — cache it for a long time. A
+  // date of today might still be pre-kickoff or live (lineup polling,
+  // in-progress incidents), so keep that short.
+  const today = new Date().toLocaleDateString('en-CA')
+  await cacheSet(cacheKey, result, date < today ? 30 * 24 * 60 * 60 : 60)
+
+  return result
 }
