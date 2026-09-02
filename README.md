@@ -9,7 +9,7 @@ written.
 
 ```bash
 npm install
-cp .env.example .env   # add your OPENAI_API_KEY for voice-note transcription
+cp .env.example .env   # add OPENAI_API_KEY (transcription) and SCRAPERAPI_KEY (Sofascore)
 npm run dev
 ```
 
@@ -28,10 +28,15 @@ Screen" from Safari's share sheet.
   `server/fixtures.ts`.
 - **Match events, lineups, stats, xG, historical fixtures**: Sofascore's
   private API, via `server/sofascore.ts`. Sofascore blocks Node's built-in
-  `fetch` (TLS/JA3 fingerprinting), so these requests go through
-  [`got-scraping`](https://github.com/apify/got-scraping), which mimics a
-  real browser's fingerprint — this only works probabilistically per request
-  (~20-30%), so `ssFetch` retries a handful of times before giving up.
+  `fetch` (TLS/JA3 fingerprinting) *and* blocks Vercel's datacenter IP ranges
+  outright regardless of fingerprint — confirmed by logs showing 100% 403s
+  from Vercel even with browser-fingerprint spoofing. So these requests route
+  through ScraperAPI (`SCRAPERAPI_KEY`, their API-endpoint integration — proxy
+  mode is gated to paid plans, the API endpoint works on the free trial),
+  which handles both problems. Without a `SCRAPERAPI_KEY` configured, it falls
+  back to plain [`got-scraping`](https://github.com/apify/got-scraping)
+  (fingerprint spoofing only), which works ~20-30% of the time locally and
+  effectively never from Vercel.
 - **League standings**: computed from ESPN's Premiership results
   (`server/table.ts`).
 - **Voice note transcription**: `server/transcribe.ts` proxies recorded audio
@@ -49,17 +54,24 @@ All server logic lives under `server/`, shared between two runtimes:
 
 ## Deploying to Vercel
 
-1. Push this repo to GitHub.
+This repo is already linked to a Vercel project (`matchday-diary/matchday-notes`,
+connected to `BubbaSantos/matchday-notes` on GitHub) and live at
+https://matchday-notes.vercel.app — every push to `master` auto-deploys.
+
+For a from-scratch setup elsewhere:
+1. Push the repo to GitHub.
 2. In Vercel, "Add New Project" → import the repo. It auto-detects Vite; no
    build config changes needed.
-3. Add an environment variable: `OPENAI_API_KEY` (Project Settings →
-   Environment Variables).
-4. Deploy. Every push to the branch you configure auto-deploys.
+3. Add environment variables (Project Settings → Environment Variables):
+   `OPENAI_API_KEY` and `SCRAPERAPI_KEY`.
+4. Deploy.
 5. On your iPhone, open the deployed URL in Safari → Share → Add to Home
    Screen.
 
 The free Hobby plan comfortably covers personal use (100 deploys/day, 1M
-function invocations/month).
+function invocations/month). ScraperAPI's free trial covers 1,000
+requests/month, which comfortably covers personal use too, but is time-limited
+— check its dashboard before the trial period ends.
 
 ## Known limitations
 

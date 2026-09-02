@@ -1,26 +1,37 @@
 // Sofascore match data (incidents, lineups, stats with xG) + historical fixtures.
-// Sofascore's API blocks Node's plain `fetch` (403 — TLS/JA3 fingerprinting), so
-// requests go through got-scraping, which mimics a real browser's TLS/HTTP2
-// fingerprint. This works from both the local Vite dev server and Vercel's
-// Node serverless runtime.
+// Sofascore's API blocks Node's plain `fetch` (403 — TLS/JA3 fingerprinting) and,
+// worse, blocks Vercel's datacenter IP ranges outright — got-scraping's browser
+// fingerprint spoofing alone only got through ~20-30% of the time locally, and
+// 0% from Vercel. So requests go through ScraperAPI's API-endpoint integration
+// (proxy-port mode is gated to paid plans; the API endpoint works on the free
+// trial), which handles both the IP reputation and fingerprinting problems.
+// Falls back to unproxied got-scraping (works some of the time locally) if
+// SCRAPERAPI_KEY isn't configured.
 import { gotScraping } from 'got-scraping'
 
 const CELTIC_SS_ID = 2352
+const SS_FETCH_ATTEMPTS = 4
 
-// got-scraping's browser-fingerprint spoofing beats Sofascore's bot detection
-// only some of the time (empirically ~20-30% success per attempt, not a hard
-// pass/fail) — so retry a handful of times before giving up.
-const SS_FETCH_ATTEMPTS = 6
+function scraperApiUrl(target: string): string | undefined {
+  const key = process.env.SCRAPERAPI_KEY
+  return key ? `https://api.scraperapi.com/?api_key=${key}&url=${encodeURIComponent(target)}` : undefined
+}
 
 async function ssFetch<T>(url: string): Promise<T | null> {
+  const viaScraperApi = scraperApiUrl(url)
   for (let attempt = 0; attempt < SS_FETCH_ATTEMPTS; attempt++) {
     try {
-      const resp = await gotScraping(url, {
-        headers: { Referer: 'https://www.sofascore.com/' },
-        timeout: { request: 15_000 },
-      })
-      if (resp.statusCode >= 200 && resp.statusCode < 300) {
-        return JSON.parse(resp.body) as T
+      if (viaScraperApi) {
+        const resp = await fetch(viaScraperApi, { signal: AbortSignal.timeout(30_000) })
+        if (resp.ok) return (await resp.json()) as T
+      } else {
+        const resp = await gotScraping(url, {
+          headers: { Referer: 'https://www.sofascore.com/' },
+          timeout: { request: 20_000 },
+        })
+        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+          return JSON.parse(resp.body) as T
+        }
       }
     } catch { /* fall through to retry */ }
   }
