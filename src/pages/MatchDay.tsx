@@ -212,17 +212,9 @@ export function MatchDay() {
               –
               {match.venue === 'A' ? match.celticScore : match.opponentScore}
             </div>
-            {decidedOnPenalties && (
-              <div className="font-mono tabular-nums" style={{ color: resultColor, fontSize: '0.9rem', marginTop: 2 }}>
-                {match.venue === 'A' ? match.penalties!.opponent : match.penalties!.celtic}
-                –
-                {match.venue === 'A' ? match.penalties!.celtic : match.penalties!.opponent}
-                {' '}on penalties
-              </div>
-            )}
-            <div style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem', marginTop: 4 }}>
+            <div style={{ color: decidedOnPenalties ? resultColor : 'var(--color-ink-muted)', fontSize: decidedOnPenalties ? '0.9rem' : '0.75rem', marginTop: decidedOnPenalties ? 2 : 4 }}>
               {decidedOnPenalties
-                ? `Celtic ${win ? 'win' : 'lose'} on penalties · Full time`
+                ? `Celtic ${win ? 'win' : 'lose'} ${match.penalties!.celtic}–${match.penalties!.opponent} on penalties`
                 : `${win ? 'Win' : draw ? 'Draw' : 'Loss'} · Full time`}
             </div>
           </div>
