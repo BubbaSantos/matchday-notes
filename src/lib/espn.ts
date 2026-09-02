@@ -1,7 +1,7 @@
 import { cacheGet, cacheSet } from './cache'
 import type { MatchEntry, Competition, MatchStat } from '../types'
 
-// Raw shape from the spfl-fixtures Python script (enhanced by Vite middleware)
+// Raw shape from server/fixtures.ts (SPFL fixtures + ICS/ESPN enrichment)
 interface RawFixture {
   date: string       // "2026-08-03"
   kickoff: string    // "19:30"

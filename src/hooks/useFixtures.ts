@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { fetchCelticFixtures } from '../lib/espn'
 import { fetchCelticStanding } from '../lib/sportmonks'
+import { getAllNotes, toVoiceNote } from '../lib/notesDb'
+import { stableMatchKey } from '../lib/matchKey'
 import type { MatchEntry, LeagueStanding } from '../types'
 
 interface FixtureStore {
@@ -25,20 +27,30 @@ export function useFixtures(): FixtureStore {
 
     async function load() {
       try {
-        const [allFixtures, stand] = await Promise.all([
+        const [allFixtures, stand, notesMap] = await Promise.all([
           fetchCelticFixtures(),
           fetchCelticStanding().catch(() => null),
+          getAllNotes().catch(() => new Map()),
         ])
         if (cancelled) return
 
-        // Inject standing into upcoming Premiership fixtures
-        const enriched = allFixtures.map((f) => ({
-          ...f,
-          standing:
-            f.phase === 'pre' && f.competition === 'Scottish Premiership'
-              ? (stand ?? undefined)
-              : undefined,
-        }))
+        // Inject standing into upcoming Premiership fixtures, and merge in
+        // locally-persisted notes/voice notes (keyed by a stable match key,
+        // since fixture `id`s can shift when the upstream data changes).
+        const enriched = allFixtures.map((f) => {
+          const notes = notesMap.get(stableMatchKey(f))
+          return {
+            ...f,
+            standing:
+              f.phase === 'pre' && f.competition === 'Scottish Premiership'
+                ? (stand ?? undefined)
+                : undefined,
+            preNotes: notes?.preNotes || undefined,
+            postNotes: notes?.postNotes || undefined,
+            preVoiceNotes: notes?.preVoiceNotes.map(toVoiceNote),
+            postVoiceNotes: notes?.postVoiceNotes.map(toVoiceNote),
+          }
+        })
 
         enriched.sort(
           (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()

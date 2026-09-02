@@ -2,12 +2,16 @@ import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, MapPin, ChevronDown } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
+import { useMatchNotes } from '../hooks/useMatchNotes'
 import { fetchLeagueTable } from '../lib/table'
 import { fetchMatchEvents } from '../lib/matchEvents'
+import { stableMatchKey } from '../lib/matchKey'
 import { CompetitionBadge } from '../components/CompetitionBadge'
 import { LeagueTable } from '../components/LeagueTable'
 import { MatchEvents } from '../components/MatchEvents'
 import { Lineups } from '../components/Lineups'
+import { VoiceRecorder } from '../components/VoiceRecorder'
+import { VoiceNoteList } from '../components/VoiceNoteList'
 import type { MatchEntry, SSMatchData, TableRow } from '../types'
 
 function formatFullDate(iso: string) {
@@ -76,6 +80,7 @@ export function MatchDay() {
   const match = fixtures.find((m) => m.id === id)
   const { events, loadingEvents } = useMatchEvents(match)
   const { tables, loadingTables, phase, setPhase, isPremiership } = useMatchTables(match)
+  const notes = useMatchNotes(match ? stableMatchKey(match) : undefined)
 
   if (!match && fixtures.length > 0) {
     return (
@@ -208,20 +213,38 @@ export function MatchDay() {
             </Block>
           )}
           <Block title="Pre-match notes">
-            {match.preNotes
-              ? <p className="font-journal m-0 leading-relaxed" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.975rem' }}>{match.preNotes}</p>
-              : <p className="m-0 italic" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No notes recorded.</p>
-            }
+            <NotesEditor
+              value={notes.preNotes}
+              onChange={notes.setPreNotes}
+              placeholder="How are you feeling about this one…"
+            />
+            <div className="mt-2.5">
+              <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('pre', blob, transcript, duration)} />
+            </div>
+            {notes.preVoiceNotes.length > 0 && (
+              <div className="mt-2.5">
+                <VoiceNoteList notes={notes.preVoiceNotes} onDelete={(id) => notes.removeVoiceNote('pre', id)} />
+              </div>
+            )}
           </Block>
         </Section>
 
         {isPast && (
           <Section label="After the Match" dot="filled">
             <Block title="Post-match notes">
-              {match.postNotes
-                ? <p className="font-journal m-0 leading-relaxed" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.975rem' }}>{match.postNotes}</p>
-                : <p className="m-0 italic" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No notes recorded.</p>
-              }
+              <NotesEditor
+                value={notes.postNotes}
+                onChange={notes.setPostNotes}
+                placeholder="What did you make of it…"
+              />
+              <div className="mt-2.5">
+                <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote('post', blob, transcript, duration)} />
+              </div>
+              {notes.postVoiceNotes.length > 0 && (
+                <div className="mt-2.5">
+                  <VoiceNoteList notes={notes.postVoiceNotes} onDelete={(id) => notes.removeVoiceNote('post', id)} />
+                </div>
+              )}
             </Block>
           </Section>
         )}
@@ -264,6 +287,34 @@ function Section({
       </div>
       <div className="space-y-4">{children}</div>
     </div>
+  )
+}
+
+function NotesEditor({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string
+  onChange: (text: string) => void
+  placeholder: string
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={3}
+      className="font-journal w-full rounded border resize-y leading-relaxed"
+      style={{
+        backgroundColor: 'var(--color-surface)',
+        borderColor: 'var(--color-border)',
+        color: 'var(--color-ink-secondary)',
+        fontSize: '0.975rem',
+        padding: '0.6rem 0.75rem',
+        fontFamily: 'inherit',
+      }}
+    />
   )
 }
 
