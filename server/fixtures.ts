@@ -5,7 +5,7 @@
 import { readFileSync, existsSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { fetchSpflFixtures, type RawFixture, type ScriptOutput } from './spflFixtures.js'
+import { fetchSpflFixtures, abbrev, type RawFixture, type ScriptOutput } from './spflFixtures.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const LEAGUE_CUP_ICS = path.resolve(__dirname, '../data/league-cup.ics')
@@ -55,7 +55,11 @@ function normalizeRound(raw: string): string {
   return raw.trim()
 }
 
-function parseICSByDate(filePath: string): Map<string, { location?: string; round?: string }> {
+// Keyed by date + home + away, not just date — cup rounds routinely have
+// several ties on the same day, so a date-only key silently let one
+// fixture's location/round overwrite another's (e.g. a Celtic tie ending up
+// with a different same-day tie's venue).
+function parseICSByDateAndTeams(filePath: string): Map<string, { location?: string; round?: string }> {
   const result = new Map<string, { location?: string; round?: string }>()
   if (!existsSync(filePath)) return result
 
@@ -64,21 +68,25 @@ function parseICSByDate(filePath: string): Map<string, { location?: string; roun
   const lines = unfolded.split(/\r?\n/)
 
   let inEvent = false
-  let dtstart = '', location = '', description = ''
+  let dtstart = '', location = '', description = '', summary = ''
 
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { inEvent = true; dtstart = location = description = ''; continue }
+    if (line === 'BEGIN:VEVENT') { inEvent = true; dtstart = location = description = summary = ''; continue }
     if (line === 'END:VEVENT') {
       if (inEvent && dtstart) {
         const raw = dtstart.trim()
         const formatted = raw.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/, '$1-$2-$3T$4:$5:$6Z')
         const dt = new Date(formatted)
-        if (!isNaN(dt.getTime())) {
+        const cleanedSummary = summary.replace(/^[^\w-]+/, '').trim()
+        const teamsMatch = cleanedSummary.match(/^(.+?)\s+-\s+(.+?)(?:\s+\(\d+-\d+\))?$/)
+        if (!isNaN(dt.getTime()) && teamsMatch) {
           const dateLocal = dt.toLocaleDateString('en-CA')
+          const home = abbrev(teamsMatch[1].trim())
+          const away = abbrev(teamsMatch[2].trim())
           const descParts = description.replace(/\\n/g, '\n').split('\n')
           const roundRaw = descParts[2]?.trim() || ''
           const round = roundRaw ? normalizeRound(roundRaw) : undefined
-          result.set(dateLocal, { location: location || undefined, round })
+          result.set(`${dateLocal}|${home.toLowerCase()}|${away.toLowerCase()}`, { location: location || undefined, round })
         }
       }
       inEvent = false
@@ -88,19 +96,38 @@ function parseICSByDate(filePath: string): Map<string, { location?: string; roun
     if (line.startsWith('DTSTART:')) dtstart = line.slice(8)
     if (line.startsWith('LOCATION:')) location = line.slice(9).trim()
     if (line.startsWith('DESCRIPTION:')) description = line.slice(12)
+    if (line.startsWith('SUMMARY:')) summary = line.slice(8)
   }
   return result
 }
 
-const espnCupScoreCache = new Map<string, { data: Map<string, { home: number; away: number }>; expiry: number }>()
+interface ESPNCupMatch {
+  home: number
+  away: number
+  penaltyHome?: number
+  penaltyAway?: number
+  venue?: string
+}
 
-async function fetchESPNCupScoresForDate(date: string): Promise<Map<string, { home: number; away: number }>> {
+const espnCupScoreCache = new Map<string, { data: Map<string, ESPNCupMatch>; expiry: number }>()
+
+// ESPN is the authoritative source here — it's the only one of our sources
+// that distinguishes a penalty-shootout result (status STATUS_FINAL_PEN,
+// with a separate `shootoutScore` per competitor) from the actual match
+// score. The bundled cup ICS files, sourced from fotmob, write a shootout
+// result in the exact same "(H-A)" bracket as a normal score with nothing
+// to tell them apart — e.g. a 0-0 draw settled 4-2 on penalties shows up as
+// literally "(2-4)" (home-away shootout score) with no regulation score at
+// all. So this both backfills missing scores AND overrides any (possibly
+// penalty-mislabeled) score/venue already present, for every past cup
+// fixture — not just ones missing a score.
+async function fetchESPNCupScoresForDate(date: string): Promise<Map<string, ESPNCupMatch>> {
   const hit = espnCupScoreCache.get(date)
   if (hit && hit.expiry > Date.now()) return hit.data
 
   const dateCompact = date.replace(/-/g, '')
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard?dates=${dateCompact}-${dateCompact}&limit=100`
-  const scoreMap = new Map<string, { home: number; away: number }>()
+  const scoreMap = new Map<string, ESPNCupMatch>()
 
   try {
     const resp = await fetch(url)
@@ -109,8 +136,8 @@ async function fetchESPNCupScoresForDate(date: string): Promise<Map<string, { ho
       for (const ev of json.events ?? []) {
         const comp = (ev.competitions as Record<string, unknown>[])?.[0]
         if (!comp) continue
-        const completed = (comp.status as Record<string, Record<string, unknown>>)?.type?.completed
-        if (!completed) continue
+        const statusType = (comp.status as Record<string, Record<string, unknown>>)?.type
+        if (!statusType?.completed) continue
         const competitors = comp.competitors as Record<string, unknown>[] | undefined
         if (!competitors || competitors.length < 2) continue
         const home = competitors.find((c) => c.homeAway === 'home')
@@ -120,9 +147,14 @@ async function fetchESPNCupScoresForDate(date: string): Promise<Map<string, { ho
         const awayName = (away.team as Record<string, string>)?.displayName ?? ''
         const homeScore = parseInt(home.score as string, 10)
         const awayScore = parseInt(away.score as string, 10)
-        if (!isNaN(homeScore) && !isNaN(awayScore)) {
-          scoreMap.set(`${homeName}|${awayName}`, { home: homeScore, away: awayScore })
-        }
+        if (isNaN(homeScore) || isNaN(awayScore)) continue
+
+        const isPenalties = statusType.name === 'STATUS_FINAL_PEN'
+        const penaltyHome = isPenalties ? (home.shootoutScore as number | undefined) : undefined
+        const penaltyAway = isPenalties ? (away.shootoutScore as number | undefined) : undefined
+        const venue = (comp.venue as Record<string, string>)?.fullName
+
+        scoreMap.set(`${homeName}|${awayName}`, { home: homeScore, away: awayScore, penaltyHome, penaltyAway, venue })
       }
     }
   } catch { /* ignore */ }
@@ -160,57 +192,60 @@ function toESPNName(name: string): string {
 export async function getEnrichedFixtures(): Promise<ScriptOutput> {
   const data = await fetchSpflFixtures()
 
-  const leagueCupMap = parseICSByDate(LEAGUE_CUP_ICS)
-  const scottishCupMap = parseICSByDate(SCOTTISH_CUP_ICS)
+  const leagueCupMap = parseICSByDateAndTeams(LEAGUE_CUP_ICS)
+  const scottishCupMap = parseICSByDateAndTeams(SCOTTISH_CUP_ICS)
   const today = new Date().toLocaleDateString('en-CA')
 
+  // Query ESPN for every past cup/UEFA date, not just ones missing a score —
+  // it's also the only way to catch a penalty-shootout result that the ICS
+  // data mislabeled as a normal score (see fetchESPNCupScoresForDate).
   const NON_LEAGUE_COMPS = new Set(['League Cup', 'Scottish Cup', 'Champions League', 'Europa League', 'Europa Conference League'])
-  const missingScoreDates = new Set<string>()
+  const pastCupDates = new Set<string>()
   for (const f of data.fixtures) {
-    const isCup = NON_LEAGUE_COMPS.has(f.comp)
-    const isPast = f.date <= today
-    const missingScore = f.homeScore == null || f.awayScore == null
-    if (isCup && isPast && missingScore) missingScoreDates.add(f.date)
+    if (NON_LEAGUE_COMPS.has(f.comp) && f.date <= today) pastCupDates.add(f.date)
   }
 
-  const espnScores = new Map<string, Map<string, { home: number; away: number }>>()
+  const espnScores = new Map<string, Map<string, ESPNCupMatch>>()
   await Promise.all(
-    [...missingScoreDates].map(async (date) => {
+    [...pastCupDates].map(async (date) => {
       espnScores.set(date, await fetchESPNCupScoresForDate(date))
     })
   )
 
-  const enriched: (RawFixture & { stadiumName?: string; round?: string })[] = data.fixtures.map((f: RawFixture) => {
-    let stadiumName: string | undefined = STADIUM_MAP[f.home]
-    let round: string | undefined
-    let homeScore = f.homeScore
-    let awayScore = f.awayScore
-    let state = f.state
+  const enriched: (RawFixture & { stadiumName?: string; round?: string; penaltyHome?: number; penaltyAway?: number })[] =
+    data.fixtures.map((f: RawFixture) => {
+      let stadiumName: string | undefined = STADIUM_MAP[f.home]
+      let round: string | undefined
+      let homeScore = f.homeScore
+      let awayScore = f.awayScore
+      let state = f.state
+      let penaltyHome: number | undefined
+      let penaltyAway: number | undefined
 
-    if (f.comp === 'League Cup') {
-      const d = leagueCupMap.get(f.date)
-      if (d?.location) stadiumName = d.location
-      if (d?.round) round = d.round
-    } else if (f.comp === 'Scottish Cup') {
-      const d = scottishCupMap.get(f.date)
-      if (d?.location) stadiumName = d.location
-      if (d?.round) round = d.round
-    }
-
-    if ((homeScore == null || awayScore == null) && espnScores.has(f.date)) {
-      const dateScores = espnScores.get(f.date)!
-      const homeESPN = toESPNName(f.home)
-      const awayESPN = toESPNName(f.away)
-      const match = dateScores.get(`${homeESPN}|${awayESPN}`)
-      if (match) {
-        homeScore = match.home
-        awayScore = match.away
-        state = 'post'
+      const icsKey = `${f.date}|${f.home.toLowerCase()}|${f.away.toLowerCase()}`
+      if (f.comp === 'League Cup') {
+        const d = leagueCupMap.get(icsKey)
+        if (d?.location) stadiumName = d.location
+        if (d?.round) round = d.round
+      } else if (f.comp === 'Scottish Cup') {
+        const d = scottishCupMap.get(icsKey)
+        if (d?.location) stadiumName = d.location
+        if (d?.round) round = d.round
       }
-    }
 
-    return { ...f, stadiumName, round, homeScore, awayScore, state }
-  })
+      const dateScores = espnScores.get(f.date)
+      const espnMatch = dateScores?.get(`${toESPNName(f.home)}|${toESPNName(f.away)}`)
+      if (espnMatch) {
+        homeScore = espnMatch.home
+        awayScore = espnMatch.away
+        state = 'post'
+        penaltyHome = espnMatch.penaltyHome
+        penaltyAway = espnMatch.penaltyAway
+        if (espnMatch.venue) stadiumName = espnMatch.venue
+      }
+
+      return { ...f, stadiumName, round, homeScore, awayScore, state, penaltyHome, penaltyAway }
+    })
 
   return { ...data, fixtures: enriched }
 }

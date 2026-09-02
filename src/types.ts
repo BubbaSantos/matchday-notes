@@ -145,6 +145,7 @@ export interface MatchEntry {
   phase: MatchPhase
   celticScore?: number
   opponentScore?: number
+  penalties?: { celtic: number; opponent: number }
   stats?: MatchStat[]
   postNotes?: string
   postVoiceNotes?: VoiceNote[]

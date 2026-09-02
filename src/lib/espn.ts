@@ -16,6 +16,8 @@ interface RawFixture {
   aggAway?: number
   stadiumName?: string
   round?: string
+  penaltyHome?: number
+  penaltyAway?: number
 }
 
 interface ScriptOutput {
@@ -88,6 +90,13 @@ function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: stri
   if (phase === 'post' && f.homeScore !== null && f.awayScore !== null) {
     entry.celticScore = isHome ? f.homeScore : f.awayScore
     entry.opponentScore = isHome ? f.awayScore : f.homeScore
+  }
+
+  if ('penaltyHome' in f && f.penaltyHome != null && f.penaltyAway != null) {
+    entry.penalties = {
+      celtic: isHome ? f.penaltyHome : f.penaltyAway,
+      opponent: isHome ? f.penaltyAway : f.penaltyHome,
+    }
   }
 
   const reschedule = KNOWN_RESCHEDULES.find(

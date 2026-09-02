@@ -78,7 +78,7 @@ function stripSuffix(name: string): string {
   return k
 }
 
-function abbrev(name: string): string {
+export function abbrev(name: string): string {
   return ABBREV[stripSuffix(name)] ?? name.trim()
 }
 

@@ -105,8 +105,9 @@ export function MatchDay() {
   const isPast = match.phase === 'post'
   const venueLabel = match.stadiumName ?? (match.venue === 'H' ? 'Celtic Park' : match.venue === 'A' ? 'Away' : 'Neutral')
 
-  const win = isPast && match.celticScore! > match.opponentScore!
-  const draw = isPast && match.celticScore === match.opponentScore
+  const decidedOnPenalties = isPast && match.penalties !== undefined
+  const win = isPast && (decidedOnPenalties ? match.penalties!.celtic > match.penalties!.opponent : match.celticScore! > match.opponentScore!)
+  const draw = isPast && !decidedOnPenalties && match.celticScore === match.opponentScore
   const resultColor = win ? 'var(--color-win)' : draw ? 'var(--color-draw)' : isPast ? 'var(--color-loss)' : 'var(--color-ink)'
   const resultBg = win ? 'var(--color-win-bg)' : draw ? 'var(--color-draw-bg)' : isPast ? 'var(--color-loss-bg)' : 'transparent'
 
@@ -160,7 +161,9 @@ export function MatchDay() {
               {match.celticScore}–{match.opponentScore}
             </div>
             <div style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem', marginTop: 4 }}>
-              {win ? 'Win' : draw ? 'Draw' : 'Loss'} · Full time
+              {decidedOnPenalties
+                ? `${win ? 'Win' : 'Loss'} on penalties (${match.penalties!.celtic}–${match.penalties!.opponent}) · Full time`
+                : `${win ? 'Win' : draw ? 'Draw' : 'Loss'} · Full time`}
             </div>
           </div>
         )}

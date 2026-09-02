@@ -27,8 +27,9 @@ function ResultScore({ match }: { match: MatchEntry }) {
       </span>
     )
   }
-  const win = match.celticScore > match.opponentScore!
-  const draw = match.celticScore === match.opponentScore
+  const pens = match.penalties
+  const win = pens ? pens.celtic > pens.opponent : match.celticScore > match.opponentScore!
+  const draw = !pens && match.celticScore === match.opponentScore
   const color = win
     ? 'var(--color-win)'
     : draw
@@ -37,11 +38,21 @@ function ResultScore({ match }: { match: MatchEntry }) {
   const homeScore = match.venue === 'A' ? match.opponentScore : match.celticScore
   const awayScore = match.venue === 'A' ? match.celticScore : match.opponentScore
   return (
-    <span
-      className="text-lg font-bold font-mono tabular-nums"
-      style={{ color }}
-    >
-      {homeScore}–{awayScore}
+    <span className="text-right">
+      <span
+        className="text-lg font-bold font-mono tabular-nums"
+        style={{ color }}
+      >
+        {homeScore}–{awayScore}
+      </span>
+      {pens && (
+        <span
+          className="block font-mono tabular-nums"
+          style={{ color: 'var(--color-ink-faint)', fontSize: '0.65rem' }}
+        >
+          ({pens.celtic}–{pens.opponent} pens)
+        </span>
+      )}
     </span>
   )
 }
