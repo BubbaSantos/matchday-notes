@@ -91,6 +91,8 @@ export type SSFixture = {
   comp: string
   homeScore: number | null
   awayScore: number | null
+  penaltyHome?: number
+  penaltyAway?: number
   state: 'pre' | 'post'
   stadiumName?: string
 }
@@ -180,8 +182,27 @@ async function ensureSofascorePages(): Promise<void> {
         const kickoff = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
         const status = (e.status as Record<string, unknown>)?.type as string
         const isFinished = status === 'finished'
-        const homeScore = (e.homeScore as Record<string, unknown>)?.current as number | undefined
-        const awayScore = (e.awayScore as Record<string, unknown>)?.current as number | undefined
+
+        // This list endpoint's "current" field is NOT the match score for a
+        // penalty shootout — it's normaltime + penalties summed together
+        // (e.g. a 3-3 draw settled 5-4 on pens shows current: 8). The real
+        // score is normaltime + any extra-time goals; penalties is separate.
+        const homeScoreRaw = e.homeScore as Record<string, number> | undefined
+        const awayScoreRaw = e.awayScore as Record<string, number> | undefined
+        const homeScore = homeScoreRaw
+          ? (homeScoreRaw.normaltime ?? 0) + (homeScoreRaw.extra1 ?? 0) + (homeScoreRaw.extra2 ?? 0)
+          : undefined
+        const awayScore = awayScoreRaw
+          ? (awayScoreRaw.normaltime ?? 0) + (awayScoreRaw.extra1 ?? 0) + (awayScoreRaw.extra2 ?? 0)
+          : undefined
+        // Sofascore includes a `penalties` field (often 0) even on matches
+        // decided outright in normal/extra time — only treat it as a real
+        // shootout when the actual score was level (penalties only ever
+        // happen after a draw).
+        const wentToPenalties = homeScore != null && awayScore != null && homeScore === awayScore
+          && (homeScoreRaw?.penalties != null || awayScoreRaw?.penalties != null)
+        const penaltyHome = wentToPenalties ? homeScoreRaw?.penalties : undefined
+        const penaltyAway = wentToPenalties ? awayScoreRaw?.penalties : undefined
 
         fixtures.push({
           date,
@@ -191,6 +212,8 @@ async function ensureSofascorePages(): Promise<void> {
           comp: mappedComp,
           homeScore: isFinished && homeScore != null ? homeScore : null,
           awayScore: isFinished && awayScore != null ? awayScore : null,
+          penaltyHome: isFinished ? penaltyHome : undefined,
+          penaltyAway: isFinished ? penaltyAway : undefined,
           state: isFinished ? 'post' : 'pre',
         })
       }

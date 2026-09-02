@@ -44,6 +44,8 @@ interface SSHistoricalFixture {
   comp: string
   homeScore: number | null
   awayScore: number | null
+  penaltyHome?: number
+  penaltyAway?: number
   state: 'pre' | 'post'
   stadiumName?: string
 }
@@ -110,7 +112,7 @@ function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: stri
 }
 
 export async function fetchCelticFixtures(): Promise<MatchEntry[]> {
-  const cacheKey = 'espn_celtic_fixtures_v7'
+  const cacheKey = 'espn_celtic_fixtures_v8'
   const cached = cacheGet<MatchEntry[]>(cacheKey)
   if (cached) return cached
 
