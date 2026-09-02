@@ -97,29 +97,29 @@ export type SSFixture = {
   stadiumName?: string
 }
 
-const SS_COMP_MAP: Record<string, string | null> = {
-  'Scottish Premiership': 'League',
-  'Scottish Premiership, Champion': 'League',
-  'Scottish Premiership, Relegation': 'League',
-  'Scottish Cup': 'Scottish Cup',
-  'Scottish League Cup': 'League Cup',
-  'UEFA Champions League': 'Champions League',
-  'UEFA Champions League, League Phase': 'Champions League',
-  'UEFA Champions League, Playoff': 'Champions League',
-  'UEFA Champions League, Knockout Round Playoffs': 'Champions League',
-  'UEFA Champions League, Group E': 'Champions League',
-  'UEFA Champions League, Group F': 'Champions League',
-  'UEFA Champions League, Group G': 'Champions League',
-  'UEFA Champions League, Group H': 'Champions League',
-  'UEFA Europa League': 'Europa League',
-  'UEFA Europa League, League Phase': 'Europa League',
-  'UEFA Europa League, Group Stage': 'Europa League',
-  'UEFA Europa Conference League': 'Conference League',
-  'UEFA Europa Conference League, League Phase': 'Conference League',
-  'UEFA Europa Conference League, Group Stage': 'Conference League',
-  'Club Friendly Games': null,
-  'Friendly International': null,
-  'Friendlies': null,
+// Sofascore's tournament.name carries a stage suffix that varies a lot —
+// "UEFA Europa League, Group G", ", Knockout stage", ", Qualification",
+// ", League Phase", and (inconsistently, across seasons) "UEFA Conference
+// League" vs "UEFA Europa Conference League" for the same competition. An
+// exact-match lookup table silently drops anything not spelled exactly
+// right — which was quietly losing most of Celtic's European history
+// (everything except the exact current-season strings). Match by prefix
+// instead, so any stage/group-letter suffix maps correctly.
+const SS_COMP_PREFIXES: [string, string][] = [
+  ['Scottish Premiership', 'League'],
+  ['Scottish Cup', 'Scottish Cup'],
+  ['Scottish League Cup', 'League Cup'],
+  ['UEFA Champions League', 'Champions League'],
+  ['UEFA Europa Conference League', 'Conference League'],
+  ['UEFA Conference League', 'Conference League'],
+  ['UEFA Europa League', 'Europa League'],
+]
+
+function mapSSComp(tournamentName: string): string | null {
+  for (const [prefix, mapped] of SS_COMP_PREFIXES) {
+    if (tournamentName.startsWith(prefix)) return mapped
+  }
+  return null // friendlies and anything else we don't track
 }
 
 const ssDateMap = new Map<string, number>()
@@ -172,7 +172,7 @@ async function ensureSofascorePages(): Promise<void> {
         ssDateMap.set(date, id)
 
         const comp = ((e.tournament as Record<string, string>)?.name) ?? ''
-        const mappedComp = SS_COMP_MAP[comp]
+        const mappedComp = mapSSComp(comp)
         if (mappedComp == null) continue
 
         const homeName = (e.homeTeam as Record<string, string>)?.name

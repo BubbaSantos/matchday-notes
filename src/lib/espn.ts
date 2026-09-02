@@ -112,7 +112,7 @@ function rawToEntry(f: RawFixture | SSHistoricalFixture, i: number, prefix: stri
 }
 
 export async function fetchCelticFixtures(): Promise<MatchEntry[]> {
-  const cacheKey = 'espn_celtic_fixtures_v8'
+  const cacheKey = 'espn_celtic_fixtures_v9'
   const cached = cacheGet<MatchEntry[]>(cacheKey)
   if (cached) return cached
 
