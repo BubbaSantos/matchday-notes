@@ -176,7 +176,7 @@ export function MatchDay() {
             )}
             <div style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem', marginTop: 4 }}>
               {decidedOnPenalties
-                ? `${win ? 'Win' : 'Loss'} on penalties · Full time`
+                ? `Celtic ${win ? 'win' : 'lose'} on penalties · Full time`
                 : `${win ? 'Win' : draw ? 'Draw' : 'Loss'} · Full time`}
             </div>
           </div>
