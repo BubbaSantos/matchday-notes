@@ -70,35 +70,6 @@ export type SSIncident = {
   playerOut?: string
 }
 
-// Sofascore's event data embeds each team's *current* manager, not who was
-// actually in charge at the time of an older match — e.g. it reported Derek
-// McInnes (appointed 17 June 2026) for a Rangers match played back in March
-// 2026, when Danny Röhl (in charge from 20 October 2025) was actually their
-// manager. Track known tenures by hand, same approach as KNOWN_RESCHEDULES
-// in espn.ts — only covers what's been specifically verified, not exhaustive
-// history; falls back to Sofascore's (possibly wrong) value outside these
-// ranges.
-const MANAGER_HISTORY: { team: string; manager: string; from: string }[] = [
-  { team: 'Celtic', manager: 'Brendan Rodgers', from: '2023-06-01' },
-  { team: 'Celtic', manager: "Martin O'Neill", from: '2025-10-27' },
-  { team: 'Celtic', manager: 'Wilfried Nancy', from: '2025-12-03' },
-  { team: 'Celtic', manager: "Martin O'Neill", from: '2026-01-05' },
-  { team: 'Rangers', manager: 'Danny Röhl', from: '2025-10-20' },
-  { team: 'Rangers', manager: 'Derek McInnes', from: '2026-06-17' },
-]
-
-function managerAt(team: string, dateISO: string): string | undefined {
-  let current: string | undefined
-  let bestFrom = ''
-  for (const entry of MANAGER_HISTORY) {
-    if (entry.team === team && entry.from <= dateISO && entry.from > bestFrom) {
-      bestFrom = entry.from
-      current = entry.manager
-    }
-  }
-  return current
-}
-
 export type SSData = {
   incidents: SSIncident[]
   homeLineup: { formation: string; players: SSPlayer[] }
@@ -225,11 +196,12 @@ export async function fetchSofascoreData(date: string): Promise<SSData | null> {
 
   const base = `https://api.sofascore.com/api/v1/event/${eventId}`
 
-  const [evJson, incJson, luJson, stJson] = await Promise.all([
+  const [evJson, incJson, luJson, stJson, mgrJson] = await Promise.all([
     ssFetch<Record<string, unknown>>(base),
     ssFetch<Record<string, unknown>>(`${base}/incidents`),
     ssFetch<Record<string, unknown>>(`${base}/lineups`),
     ssFetch<Record<string, unknown>>(`${base}/statistics`),
+    ssFetch<Record<string, unknown>>(`${base}/managers`),
   ])
 
   if (!incJson && !luJson && !stJson) return null
@@ -237,8 +209,18 @@ export async function fetchSofascoreData(date: string): Promise<SSData | null> {
   const evData = (evJson?.event as Record<string, Record<string, unknown>>) ?? {}
   const homeTeamName = (evData.homeTeam?.name as string) ?? 'Home'
   const awayTeamName = (evData.awayTeam?.name as string) ?? 'Away'
-  const homeManager = managerAt(homeTeamName, date) ?? ((evData.homeTeam?.manager as Record<string, string>)?.name) ?? undefined
-  const awayManager = managerAt(awayTeamName, date) ?? ((evData.awayTeam?.manager as Record<string, string>)?.name) ?? undefined
+  // /managers is the point-in-time manager for this specific match; the
+  // manager embedded in the main event payload (evData.homeTeam.manager) is
+  // each club's *current* manager regardless of when the match was played,
+  // so prefer /managers and only fall back to that if it's unavailable.
+  const homeManager =
+    ((mgrJson?.homeManager as Record<string, string>)?.name) ??
+    ((evData.homeTeam?.manager as Record<string, string>)?.name) ??
+    undefined
+  const awayManager =
+    ((mgrJson?.awayManager as Record<string, string>)?.name) ??
+    ((evData.awayTeam?.manager as Record<string, string>)?.name) ??
+    undefined
 
   const incidents: SSIncident[] = []
   for (const inc of ((incJson?.incidents) as Record<string, unknown>[]) ?? []) {
