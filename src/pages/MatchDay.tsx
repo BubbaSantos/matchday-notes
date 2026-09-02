@@ -1,0 +1,493 @@
+import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { ArrowLeft, MapPin, ChevronDown } from 'lucide-react'
+import { useFixtures } from '../hooks/useFixtures'
+import { fetchLeagueTable } from '../lib/table'
+import { fetchMatchEvents } from '../lib/matchEvents'
+import { CompetitionBadge } from '../components/CompetitionBadge'
+import { LeagueTable } from '../components/LeagueTable'
+import { MatchEvents } from '../components/MatchEvents'
+import { Lineups } from '../components/Lineups'
+import type { MatchEntry, SSMatchData, TableRow } from '../types'
+
+function formatFullDate(iso: string) {
+  const d = new Date(iso)
+  return {
+    long: d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+    time: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+  }
+}
+
+function useMatchEvents(match: MatchEntry | undefined) {
+  const [events, setEvents] = useState<SSMatchData | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!match || match.phase !== 'post') return
+    let cancelled = false
+    setLoading(true)
+    ;(async () => {
+      try {
+        const date = match.kickoff.slice(0, 10)
+        const data = await fetchMatchEvents(date)
+        if (!cancelled) setEvents(data)
+      } catch { /* no events */ }
+      finally { if (!cancelled) setLoading(false) }
+    })()
+    return () => { cancelled = true }
+  }, [match?.id])
+
+  return { events, loadingEvents: loading }
+}
+
+type TablePhase = 'before' | 'after'
+
+function useMatchTables(match: MatchEntry | undefined) {
+  const [tables, setTables] = useState<Record<TablePhase, TableRow[] | null>>({ before: null, after: null })
+  const [loading, setLoading] = useState(false)
+  const [phase, setPhase] = useState<TablePhase>('after')
+
+  const isPremiership = match?.competition === 'Scottish Premiership'
+
+  useEffect(() => {
+    if (!match || !isPremiership) return
+    let cancelled = false
+    const date = match.kickoff.slice(0, 10)
+    setLoading(true)
+    ;(async () => {
+      try {
+        const [before, after] = await Promise.all([
+          fetchLeagueTable({ cutoff: date, inclusive: false }),
+          fetchLeagueTable({ cutoff: date, inclusive: true }),
+        ])
+        if (!cancelled) setTables({ before, after })
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setLoading(false) }
+    })()
+    return () => { cancelled = true }
+  }, [match?.id])
+
+  return { tables, loadingTables: loading, phase, setPhase, isPremiership }
+}
+
+export function MatchDay() {
+  const { id } = useParams<{ id: string }>()
+  const { fixtures } = useFixtures()
+  const match = fixtures.find((m) => m.id === id)
+  const { events, loadingEvents } = useMatchEvents(match)
+  const { tables, loadingTables, phase, setPhase, isPremiership } = useMatchTables(match)
+
+  if (!match && fixtures.length > 0) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center" style={{ color: 'var(--color-ink-muted)' }}>
+        <p>Match not found.</p>
+        <Link to="/" style={{ color: 'var(--color-accent)', fontSize: '0.875rem' }}>← Back to diary</Link>
+      </div>
+    )
+  }
+
+  if (!match) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-8 space-y-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="rounded-lg h-20 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+        ))}
+      </div>
+    )
+  }
+
+  const { long, time } = formatFullDate(match.kickoff)
+  const isPast = match.phase === 'post'
+  const venueLabel = match.stadiumName ?? (match.venue === 'H' ? 'Celtic Park' : match.venue === 'A' ? 'Away' : 'Neutral')
+
+  const win = isPast && match.celticScore! > match.opponentScore!
+  const draw = isPast && match.celticScore === match.opponentScore
+  const resultColor = win ? 'var(--color-win)' : draw ? 'var(--color-draw)' : isPast ? 'var(--color-loss)' : 'var(--color-ink)'
+  const resultBg = win ? 'var(--color-win-bg)' : draw ? 'var(--color-draw-bg)' : isPast ? 'var(--color-loss-bg)' : 'transparent'
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-8">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1.5 no-underline mb-6"
+        style={{ color: 'var(--color-ink-muted)', fontSize: '0.875rem' }}
+      >
+        <ArrowLeft size={13} />
+        Back to diary
+      </Link>
+
+      {/* Header card */}
+      <div
+        className="rounded-xl border p-5 mb-1"
+        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+      >
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <CompetitionBadge competition={match.competition} />
+          {match.round && (
+            <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem' }}>
+              {match.round}
+            </span>
+          )}
+          <span
+            className="flex items-center gap-1 ml-auto"
+            style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}
+          >
+            <MapPin size={10} />
+            {venueLabel}
+          </span>
+        </div>
+        <h1 className="font-journal m-0 leading-tight" style={{ color: 'var(--color-ink)', fontSize: '1.5rem' }}>
+          Celtic <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.9em' }}>vs</span> {match.opponent}
+        </h1>
+        <p className="m-0 mt-1" style={{ color: 'var(--color-ink-muted)', fontSize: '0.85rem' }}>
+          {long} · KO {time}
+        </p>
+
+        {isPast && match.celticScore !== undefined && (
+          <div
+            className="mt-4 pt-4 border-t rounded-lg text-center py-4"
+            style={{ borderColor: 'var(--color-border)', backgroundColor: resultBg, marginInline: '-1.25rem', paddingInline: '1.25rem' }}
+          >
+            <div
+              className="font-bold font-mono tabular-nums"
+              style={{ color: resultColor, fontSize: '3rem', lineHeight: 1 }}
+            >
+              {match.celticScore}–{match.opponentScore}
+            </div>
+            <div style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem', marginTop: 4 }}>
+              {win ? 'Win' : draw ? 'Draw' : 'Loss'} · Full time
+            </div>
+          </div>
+        )}
+
+        {/* Inline league table — Celtic row by default, expandable */}
+        {isPremiership && (tables.before || tables.after || loadingTables) && (
+          <InlineLeagueTable
+            tables={tables}
+            loading={loadingTables}
+            isPast={isPast}
+            phase={phase}
+            setPhase={setPhase}
+            opponent={match.opponent}
+          />
+        )}
+
+        {/* Match events and stats — same card, below the table */}
+        {isPast && (loadingEvents || events) && (
+          <CollapsibleEvents loading={loadingEvents} events={events} opponentName={match.opponent} />
+        )}
+      </div>
+
+      {/* Notes timeline */}
+      <div className="relative mt-1">
+        <div
+          className="absolute top-0 bottom-0 w-px"
+          style={{ left: 16, backgroundColor: 'var(--color-border-subtle)' }}
+        />
+
+        <Section label="Before Kickoff" dot={isPast ? 'filled' : 'empty'}>
+          {match.injuries && match.injuries.length > 0 && (
+            <Block title="Injury News">
+              <div className="space-y-1.5">
+                {match.injuries.map((inj) => (
+                  <div
+                    key={inj.playerName}
+                    className="flex justify-between rounded border px-3 py-2 text-sm"
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+                  >
+                    <span>
+                      <span style={{ color: 'var(--color-ink)' }}>{inj.playerName}</span>
+                      <span className="ml-1.5" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>{inj.position}</span>
+                    </span>
+                    <span style={{ color: 'var(--color-draw)', fontSize: '0.8rem' }}>
+                      {inj.injury}{inj.returnDate ? ` · ${inj.returnDate}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Block>
+          )}
+          <Block title="Pre-match notes">
+            {match.preNotes
+              ? <p className="font-journal m-0 leading-relaxed" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.975rem' }}>{match.preNotes}</p>
+              : <p className="m-0 italic" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No notes recorded.</p>
+            }
+          </Block>
+        </Section>
+
+        {isPast && (
+          <Section label="After the Match" dot="filled">
+            <Block title="Post-match notes">
+              {match.postNotes
+                ? <p className="font-journal m-0 leading-relaxed" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.975rem' }}>{match.postNotes}</p>
+                : <p className="m-0 italic" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No notes recorded.</p>
+              }
+            </Block>
+          </Section>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Section({
+  label,
+  dot,
+  children,
+}: {
+  label: string
+  dot: 'filled' | 'empty'
+  children: React.ReactNode
+}) {
+  return (
+    <div className="relative pl-10 pt-7 pb-1">
+      <div
+        className="absolute w-4 h-4 rounded-full border-2"
+        style={{
+          left: 8,
+          top: 28,
+          borderColor: dot === 'filled' ? 'var(--color-accent)' : 'var(--color-border)',
+          backgroundColor: dot === 'filled' ? 'var(--color-accent)' : 'var(--color-surface)',
+          zIndex: 1,
+        }}
+      />
+      <div
+        className="font-medium mb-4"
+        style={{
+          color: 'var(--color-ink-muted)',
+          fontSize: '0.7rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+        }}
+      >
+        {label}
+      </div>
+      <div className="space-y-4">{children}</div>
+    </div>
+  )
+}
+
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div
+        className="mb-1.5"
+        style={{
+          color: 'var(--color-ink-faint)',
+          fontSize: '0.65rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          fontWeight: 500,
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function InlineLeagueTable({
+  tables,
+  loading,
+  isPast,
+  phase,
+  setPhase,
+  opponent,
+}: {
+  tables: Record<'before' | 'after', TableRow[] | null>
+  loading: boolean
+  isPast: boolean
+  phase: 'before' | 'after'
+  setPhase: (p: 'before' | 'after') => void
+  opponent: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  const activeRows = isPast ? (tables[phase] ?? tables.after) : tables.after
+  const celticRow = activeRows?.find((r) => r.team === 'Celtic')
+    ?? (activeRows && activeRows.length > 0
+      ? { team: 'Celtic', position: activeRows.length + 1, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0 }
+      : undefined)
+
+  // Build position-change map: team → delta (positive = moved up)
+  const positionChanges = (() => {
+    if (!tables.before || !tables.after || phase !== 'after') return undefined
+    const beforeMap = new Map(tables.before.map((r) => [r.team, r.position]))
+    const changes = new Map<string, number>()
+    for (const row of tables.after) {
+      const before = beforeMap.get(row.team)
+      if (before != null) changes.set(row.team, before - row.position) // positive = moved up
+    }
+    return changes
+  })()
+
+  return (
+    <div
+      className="border-t mt-4 pt-3"
+      style={{ borderColor: 'var(--color-border-subtle)', marginInline: '-1.25rem', paddingInline: '1.25rem' }}
+    >
+      {/* Phase toggle (before/after) — only for played Premiership games */}
+      {isPast && (
+        <div className="flex gap-0 mb-2" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+          {(['before', 'after'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPhase(p)}
+              className="border-none cursor-pointer px-0 py-1 mr-4"
+              style={{
+                background: 'none',
+                fontFamily: 'inherit',
+                fontSize: '0.62rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                color: phase === p ? 'var(--color-ink)' : 'var(--color-ink-faint)',
+                fontWeight: phase === p ? 600 : 400,
+                borderBottom: phase === p ? '2px solid var(--color-accent)' : '2px solid transparent',
+                marginBottom: -1,
+              }}
+            >
+              {p === 'before' ? 'Before match' : 'After match'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="h-8 animate-pulse rounded" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+      ) : (
+        <>
+          {/* Collapsed: just Celtic's row */}
+          {!expanded && celticRow && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="w-full border-none cursor-pointer p-0 text-left"
+              style={{ background: 'none' }}
+            >
+              <div className="flex items-center gap-3 py-1.5" style={{ fontSize: '0.8rem' }}>
+                <span
+                  className="font-mono font-bold"
+                  style={{ color: 'var(--color-accent)', width: 20, textAlign: 'center', fontSize: '1rem' }}
+                >
+                  {celticRow.position}
+                </span>
+                <span style={{ flex: 1, color: 'var(--color-accent)', fontWeight: 600 }}>Celtic</span>
+                {[
+                  { l: 'P', v: celticRow.played },
+                  { l: 'W', v: celticRow.won },
+                  { l: 'D', v: celticRow.drawn },
+                  { l: 'L', v: celticRow.lost },
+                  { l: 'GD', v: celticRow.goalDifference > 0 ? `+${celticRow.goalDifference}` : celticRow.goalDifference },
+                  { l: 'Pts', v: celticRow.points },
+                ].map(({ l, v }) => (
+                  <div key={l} className="text-center" style={{ width: 28 }}>
+                    <div style={{ color: 'var(--color-ink-faint)', fontSize: '0.58rem', textTransform: 'uppercase' }}>{l}</div>
+                    <div className="font-mono" style={{ color: l === 'Pts' ? 'var(--color-accent)' : 'var(--color-ink-muted)', fontWeight: l === 'Pts' ? 700 : 400, fontSize: '0.78rem' }}>{v}</div>
+                  </div>
+                ))}
+                <ChevronDown size={12} style={{ color: 'var(--color-ink-faint)', flexShrink: 0 }} />
+              </div>
+            </button>
+          )}
+
+          {/* Expanded: full table */}
+          {expanded && activeRows && (
+            <div>
+              <LeagueTable rows={activeRows} secondaryHighlight={opponent} positionChanges={positionChanges} />
+              <button
+                onClick={() => setExpanded(false)}
+                className="w-full text-center border-none cursor-pointer mt-2 py-1"
+                style={{ background: 'none', color: 'var(--color-ink-faint)', fontSize: '0.72rem', fontFamily: 'inherit' }}
+              >
+                Show less ↑
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+type EventsTab = 'events' | 'lineups'
+
+function CollapsibleEvents({
+  loading,
+  events,
+  opponentName,
+}: {
+  loading: boolean
+  events: SSMatchData | null
+  opponentName: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [tab, setTab] = useState<EventsTab>('events')
+
+  const hasLineups =
+    events &&
+    (events.homeLineup.players.length > 0 || events.awayLineup.players.length > 0)
+
+  return (
+    <div
+      className="border-t mt-4 pt-3"
+      style={{ borderColor: 'var(--color-border-subtle)', marginInline: '-1.25rem', paddingInline: '1.25rem' }}
+    >
+      {loading ? (
+        <div className="space-y-2">
+          <div className="rounded h-20 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+          <div className="rounded h-24 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+        </div>
+      ) : !events ? null : !expanded ? (
+        <button
+          onClick={() => setExpanded(true)}
+          className="w-full border-none cursor-pointer py-1.5 flex items-center justify-between"
+          style={{ background: 'none', fontFamily: 'inherit' }}
+        >
+          <span style={{ fontSize: '0.72rem', color: 'var(--color-ink-faint)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Match events & stats
+          </span>
+          <ChevronDown size={13} style={{ color: 'var(--color-ink-faint)' }} />
+        </button>
+      ) : (
+        <>
+          {/* Tab row */}
+          {hasLineups && (
+            <div className="flex mb-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+              {(['events', 'lineups'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className="border-none cursor-pointer px-0 py-1 mr-4"
+                  style={{
+                    background: 'none',
+                    fontFamily: 'inherit',
+                    fontSize: '0.62rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: tab === t ? 'var(--color-ink)' : 'var(--color-ink-faint)',
+                    fontWeight: tab === t ? 600 : 400,
+                    borderBottom: tab === t ? '2px solid var(--color-accent)' : '2px solid transparent',
+                    marginBottom: -1,
+                  }}
+                >
+                  {t === 'events' ? 'Events & Stats' : 'Lineups'}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {tab === 'events' && <MatchEvents data={events} opponentName={opponentName} />}
+          {tab === 'lineups' && hasLineups && <Lineups data={events!} />}
+
+          <button
+            onClick={() => setExpanded(false)}
+            className="w-full text-center border-none cursor-pointer mt-3 py-1"
+            style={{ background: 'none', color: 'var(--color-ink-faint)', fontSize: '0.72rem', fontFamily: 'inherit' }}
+          >
+            Show less ↑
+          </button>
+        </>
+      )}
+    </div>
+  )
+}

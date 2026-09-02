@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paper / off-white palette */
+  --color-paper: #f5f1eb;
+  --color-surface: #ffffff;
+  --color-surface-raised: #faf8f5;
+  --color-surface-hover: #f7f4ef;
+  --color-border: #ddd8cf;
+  --color-border-subtle: #e8e4dc;
+
+  /* Ink */
+  --color-ink: #1a1917;
+  --color-ink-secondary: #3d3a36;
+  --color-ink-muted: #7a756d;
+  --color-ink-faint: #aba59c;
+
+  /* Accent — very restrained Celtic green, used sparingly */
+  --color-accent: #1e5c24;
+  --color-accent-light: #2d7a32;
+  --color-accent-faint: rgba(30, 92, 36, 0.08);
+
+  /* Result colours — muted, ink-like */
+  --color-win: #1a5c22;
+  --color-draw: #7a5c00;
+  --color-loss: #7a1e1e;
+  --color-win-bg: rgba(26, 92, 34, 0.07);
+  --color-draw-bg: rgba(122, 92, 0, 0.07);
+  --color-loss-bg: rgba(122, 30, 30, 0.07);
+
+  /* Competition badge colours */
+  --color-comp-prem: #1a5c22;
+  --color-comp-lc: #5c3a00;
+  --color-comp-sc: #3a1a5c;
+  --color-comp-el: #1a3a5c;
+  --color-comp-ecl: #1a5c50;
+  --color-comp-ucl: #0a2a5c;
+  --color-comp-friendly: #5c5040;
+
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root { min-height: 100vh; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--color-paper); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+.font-journal { font-family: var(--font-serif); }
