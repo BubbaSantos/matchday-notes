@@ -265,88 +265,72 @@ function PlayerRow({ player, isCeltic, eventMap }: { player: SSPlayer; isCeltic:
 }
 
 // ── Lineup side ───────────────────────────────────────────────────────────────
+// Split into separate row-aligned sections (header, manager, starters, subs
+// used, unused) rather than one continuous column per team — otherwise
+// "Substitutes used" / "Unused" headings drift out of alignment between the
+// two columns whenever the squads' list lengths differ.
 
-function LineupSide({
-  label,
-  formation,
-  players,
-  isCeltic,
-  manager,
-  eventMap,
-}: {
-  label: string
-  formation: string
-  players: SSPlayer[]
-  isCeltic: boolean
-  manager?: string
-  eventMap: Map<string, PlayerEvents>
-}) {
-  const starters = players.filter((p) => p.starter)
-  const subsUsed = players.filter((p) => !p.starter && p.used)
-  const unused = players.filter((p) => !p.starter && !p.used)
-
+function LineupHeader({ label, formation, isCeltic }: { label: string; formation: string; isCeltic: boolean }) {
   return (
-    <div>
-      <div
-        className="flex items-center justify-between mb-1 pb-1"
-        style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+    <div
+      className="flex items-center justify-between mb-1 pb-1"
+      style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+    >
+      <span
+        style={{
+          fontSize: '0.68rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.07em',
+          color: isCeltic ? 'var(--color-accent)' : 'var(--color-ink-muted)',
+          fontWeight: 600,
+        }}
       >
-        <span
-          style={{
-            fontSize: '0.68rem',
-            textTransform: 'uppercase',
-            letterSpacing: '0.07em',
-            color: isCeltic ? 'var(--color-accent)' : 'var(--color-ink-muted)',
-            fontWeight: 600,
-          }}
-        >
-          {label}
+        {label}
+      </span>
+      {formation && (
+        <span style={{ fontSize: '0.68rem', color: 'var(--color-ink-faint)', fontFamily: 'monospace' }}>
+          {formation}
         </span>
-        {formation && (
-          <span style={{ fontSize: '0.68rem', color: 'var(--color-ink-faint)', fontFamily: 'monospace' }}>
-            {formation}
-          </span>
-        )}
-      </div>
-
-      {manager && (
-        <div className="mb-2" style={{ fontSize: '0.68rem', color: 'var(--color-ink-faint)' }}>
-          Mgr: {manager}
-        </div>
-      )}
-
-      {starters.map((p) => (
-        <PlayerRow key={p.shortName} player={p} isCeltic={isCeltic} eventMap={eventMap} />
-      ))}
-
-      {subsUsed.length > 0 && (
-        <>
-          <div
-            className="mt-3 mb-1"
-            style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-ink-faint)' }}
-          >
-            Substitutes used
-          </div>
-          {subsUsed.map((p) => (
-            <PlayerRow key={p.shortName} player={p} isCeltic={isCeltic} eventMap={eventMap} />
-          ))}
-        </>
-      )}
-
-      {unused.length > 0 && (
-        <>
-          <div
-            className="mt-3 mb-1"
-            style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-ink-faint)' }}
-          >
-            Unused
-          </div>
-          {unused.map((p) => (
-            <PlayerRow key={p.shortName} player={p} isCeltic={isCeltic} eventMap={eventMap} />
-          ))}
-        </>
       )}
     </div>
+  )
+}
+
+function LineupManager({ manager }: { manager?: string }) {
+  if (!manager) return <div />
+  return (
+    <div className="mb-2" style={{ fontSize: '0.68rem', color: 'var(--color-ink-faint)' }}>
+      Mgr: {manager}
+    </div>
+  )
+}
+
+function LineupSectionHeading({ text }: { text: string }) {
+  return (
+    <div
+      className="mt-3 mb-1"
+      style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-ink-faint)' }}
+    >
+      {text}
+    </div>
+  )
+}
+
+function LineupPlayerList({
+  players,
+  isCeltic,
+  eventMap,
+}: {
+  players: SSPlayer[]
+  isCeltic: boolean
+  eventMap: Map<string, PlayerEvents>
+}) {
+  return (
+    <>
+      {players.map((p) => (
+        <PlayerRow key={p.shortName} player={p} isCeltic={isCeltic} eventMap={eventMap} />
+      ))}
+    </>
   )
 }
 
@@ -362,6 +346,13 @@ export function Lineups({ data }: { data: SSMatchData }) {
 
   const eventMap = useMemo(() => buildPlayerEventMap(data.incidents), [data.incidents])
 
+  const celticStarters = celticLineup.players.filter((p) => p.starter)
+  const celticSubsUsed = celticLineup.players.filter((p) => !p.starter && p.used)
+  const celticUnused = celticLineup.players.filter((p) => !p.starter && !p.used)
+  const oppStarters = oppLineup.players.filter((p) => p.starter)
+  const oppSubsUsed = oppLineup.players.filter((p) => !p.starter && p.used)
+  const oppUnused = oppLineup.players.filter((p) => !p.starter && !p.used)
+
   return (
     <div>
       {!data.confirmed && (
@@ -372,10 +363,49 @@ export function Lineups({ data }: { data: SSMatchData }) {
           Lineups not yet confirmed
         </div>
       )}
+
       <div className="grid grid-cols-2 gap-4">
-        <LineupSide label="Celtic" formation={celticLineup.formation} players={celticLineup.players} isCeltic manager={celticManager} eventMap={eventMap} />
-        <LineupSide label={oppName} formation={oppLineup.formation} players={oppLineup.players} isCeltic={false} manager={oppManager} eventMap={eventMap} />
+        <LineupHeader label="Celtic" formation={celticLineup.formation} isCeltic />
+        <LineupHeader label={oppName} formation={oppLineup.formation} isCeltic={false} />
       </div>
+
+      {(celticManager || oppManager) && (
+        <div className="grid grid-cols-2 gap-4">
+          <LineupManager manager={celticManager} />
+          <LineupManager manager={oppManager} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <div><LineupPlayerList players={celticStarters} isCeltic eventMap={eventMap} /></div>
+        <div><LineupPlayerList players={oppStarters} isCeltic={false} eventMap={eventMap} /></div>
+      </div>
+
+      {(celticSubsUsed.length > 0 || oppSubsUsed.length > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            {celticSubsUsed.length > 0 && <LineupSectionHeading text="Substitutes used" />}
+            <LineupPlayerList players={celticSubsUsed} isCeltic eventMap={eventMap} />
+          </div>
+          <div>
+            {oppSubsUsed.length > 0 && <LineupSectionHeading text="Substitutes used" />}
+            <LineupPlayerList players={oppSubsUsed} isCeltic={false} eventMap={eventMap} />
+          </div>
+        </div>
+      )}
+
+      {(celticUnused.length > 0 || oppUnused.length > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            {celticUnused.length > 0 && <LineupSectionHeading text="Unused" />}
+            <LineupPlayerList players={celticUnused} isCeltic eventMap={eventMap} />
+          </div>
+          <div>
+            {oppUnused.length > 0 && <LineupSectionHeading text="Unused" />}
+            <LineupPlayerList players={oppUnused} isCeltic={false} eventMap={eventMap} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
