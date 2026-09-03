@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { BookOpen, Search, User, LogOut, Clock } from 'lucide-react'
+import { BookOpen, Search, User, LogOut } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
@@ -9,7 +9,6 @@ export function Nav() {
   const { username, logout } = useAuth()
   const isHome = location.pathname === '/'
   const isSearch = location.pathname === '/search'
-  const isHistory = location.pathname.startsWith('/history')
   const isLogin = location.pathname === '/login'
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -49,7 +48,6 @@ export function Nav() {
 
       <div className="flex items-center gap-1">
         <NavLink to="/" icon={<BookOpen size={15} />} label="Archive" active={isHome} />
-        <NavLink to="/history" icon={<Clock size={15} />} label="History" active={isHistory} />
         <NavLink to="/search" icon={<Search size={15} />} label="Search" active={isSearch} />
         {username ? (
           <div className="relative" ref={menuRef}>

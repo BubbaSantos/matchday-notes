@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { RefreshCw, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { FixtureCard } from '../components/FixtureCard'
 import { LeagueTable } from '../components/LeagueTable'
@@ -9,6 +9,97 @@ import type { Competition, LeagueStanding, TableRow } from '../types'
 
 type Filter = 'all' | Competition
 type Section = 'upcoming' | 'played'
+
+// ── Historical match types ───────────────────────────────────────────────────
+
+interface YearMeta { year: number; count: number; withReport: number }
+
+interface HistoricalMatch {
+  year: number
+  date: string | null
+  competition: string
+  home: string
+  away: string
+  homeScore: number | null
+  awayScore: number | null
+  slug: string
+  report: { sections: Record<string, string> } | null
+  notes?: string
+}
+
+// ── Historical fixture card ──────────────────────────────────────────────────
+
+function HistoricalFixtureCard({ match, isLast }: { match: HistoricalMatch; isLast: boolean }) {
+  const d = match.date ? new Date(match.date) : null
+  const weekday = d?.toLocaleDateString('en-GB', { weekday: 'short' }) ?? ''
+  const day     = d?.toLocaleDateString('en-GB', { day: 'numeric' }) ?? '?'
+  const month   = d?.toLocaleDateString('en-GB', { month: 'short' }) ?? ''
+
+  const celtic = match.home === 'Celtic' ? match.homeScore : match.awayScore
+  const opp    = match.home === 'Celtic' ? match.awayScore : match.homeScore
+  const isHome = match.home === 'Celtic'
+  const opponent = isHome ? match.away : match.home
+
+  const win  = celtic != null && opp != null && celtic > opp
+  const draw = celtic != null && opp != null && celtic === opp
+  const resultColor = win ? 'var(--color-win)' : draw ? 'var(--color-draw)' : celtic != null ? 'var(--color-loss)' : 'var(--color-ink-muted)'
+
+  return (
+    <div className="flex gap-3">
+      <div className="flex-shrink-0 text-right pt-4" style={{ width: 48, color: 'var(--color-ink-muted)', fontSize: '0.75rem' }}>
+        <div className="uppercase tracking-wider" style={{ fontSize: '0.65rem' }}>{weekday}</div>
+        <div className="font-bold leading-none mt-0.5" style={{ fontSize: '1.25rem', color: 'var(--color-ink-secondary)' }}>{day}</div>
+        <div>{month}</div>
+      </div>
+      <div className="flex flex-col items-center flex-shrink-0 pt-4" style={{ width: 18 }}>
+        <div className="w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 mt-1" style={{ borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-accent)' }} />
+        {!isLast && <div className="w-px flex-1 mt-1" style={{ backgroundColor: 'var(--color-border-subtle)', minHeight: 20 }} />}
+      </div>
+      <Link
+        to={`/history/match/${encodeURIComponent(match.slug)}`}
+        className="flex-1 mb-3 no-underline"
+      >
+        <div
+          className="rounded-lg border px-4 py-3 transition-all duration-150 cursor-pointer group"
+          style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+          onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = 'var(--color-ink-muted)'; el.style.backgroundColor = 'var(--color-surface-hover)' }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = 'var(--color-border)'; el.style.backgroundColor = 'var(--color-surface)' }}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-ink-muted)', fontWeight: 500 }}>
+                  {match.competition}
+                </span>
+                <span className="flex items-center gap-1 ml-auto" style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>
+                  {isHome ? 'Celtic Park' : 'Away'}
+                </span>
+              </div>
+              <div className="font-journal leading-snug" style={{ color: 'var(--color-ink)', fontSize: '1rem' }}>
+                {isHome ? <>Celtic <span style={{ color: 'var(--color-ink-muted)' }}>vs</span> {opponent}</> : <>{opponent} <span style={{ color: 'var(--color-ink-muted)' }}>vs</span> Celtic</>}
+              </div>
+              {match.notes && (
+                <p className="text-sm leading-relaxed line-clamp-1 mt-1 m-0" style={{ color: 'var(--color-ink-muted)', fontSize: '0.8rem' }}>
+                  {match.notes.replace(/^#+\s*/gm, '')}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {celtic != null && opp != null ? (
+                <span className="text-lg font-bold font-mono tabular-nums" style={{ color: resultColor }}>
+                  {isHome ? celtic : opp}–{isHome ? opp : celtic}
+                </span>
+              ) : (
+                <span className="text-sm tabular-nums" style={{ color: 'var(--color-ink-muted)' }}>–</span>
+              )}
+              <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--color-ink-muted)' }} />
+            </div>
+          </div>
+        </div>
+      </Link>
+    </div>
+  )
+}
 
 export function Home() {
   const { fixtures, standing, loading, error, refresh } = useFixtures()
@@ -21,6 +112,34 @@ export function Home() {
   const filter = (searchParams.get('comp') as Filter) || 'all'
   const section = (searchParams.get('section') as Section) || 'played'
   const selectedSeason = searchParams.get('season') || currentSeasonLabel
+
+  // Historical year data
+  const [histIndex, setHistIndex] = useState<YearMeta[] | null>(null)
+  const [histMatches, setHistMatches] = useState<HistoricalMatch[] | null>(null)
+  const [histLoading, setHistLoading] = useState(false)
+
+  // Detect if selected season is a historical calendar year (e.g. "2002") vs "2024-25"
+  const isHistorical = /^\d{4}$/.test(selectedSeason)
+
+  // Load historical index once
+  useEffect(() => {
+    fetch('/history/index.json').then(r => r.json()).then(setHistIndex).catch(() => {})
+  }, [])
+
+  // Load historical matches when a historical year is selected
+  useEffect(() => {
+    if (!isHistorical) { setHistMatches(null); return }
+    setHistLoading(true)
+    setHistMatches(null)
+    fetch(`/history/${selectedSeason}.json`)
+      .then(r => r.json())
+      .then((data: HistoricalMatch[]) => {
+        // Sort newest-first within the year
+        setHistMatches([...data].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')))
+        setHistLoading(false)
+      })
+      .catch(() => setHistLoading(false))
+  }, [isHistorical, selectedSeason])
 
   function setFilter(f: Filter) {
     setSearchParams((prev) => {
@@ -54,12 +173,19 @@ export function Home() {
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()) // newest first
   const currentSeasonCount = past.filter((m) => getSeason(m.kickoff) === currentSeasonLabel).length
 
-  // All seasons present in the played fixtures, newest first
+  // All seasons: Sofascore seasons + historical years from index
   const seasons = useMemo(() => {
     const set = new Set<string>()
     for (const m of past) set.add(getSeason(m.kickoff))
+    // Append historical years that don't overlap with existing seasons
+    if (histIndex) {
+      const earliestSofascore = Math.min(...[...set].map(s => parseInt(s)))
+      for (const y of histIndex) {
+        if (y.year < earliestSofascore) set.add(String(y.year))
+      }
+    }
     return [...set]
-  }, [past])
+  }, [past, histIndex])
 
   const seasonFixtures = past.filter((m) => getSeason(m.kickoff) === selectedSeason)
 
@@ -189,17 +315,35 @@ export function Home() {
         </section>
       )}
 
-      {/* Past — filtered to the selected season */}
+      {/* Past — filtered to the selected season (Sofascore or historical) */}
       {!loading && section === 'played' && (
         <section>
-          {seasonFixtures.length === 0 ? (
-            <p className="text-center py-12" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>
-              No played fixtures{selectedSeason ? ` in ${selectedSeason}` : ''}.
-            </p>
+          {isHistorical ? (
+            histLoading ? (
+              <div className="space-y-2.5">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="rounded-lg h-16 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+                ))}
+              </div>
+            ) : histMatches && histMatches.length > 0 ? (
+              histMatches.map((m, i) => (
+                <HistoricalFixtureCard key={m.slug} match={m} isLast={i === histMatches.length - 1} />
+              ))
+            ) : (
+              <p className="text-center py-12" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>
+                No matches found for {selectedSeason}.
+              </p>
+            )
           ) : (
-            seasonFixtures.map((m, i) => (
-              <FixtureCard key={m.id} match={m} isLast={i === seasonFixtures.length - 1} />
-            ))
+            seasonFixtures.length === 0 ? (
+              <p className="text-center py-12" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>
+                No played fixtures{selectedSeason ? ` in ${selectedSeason}` : ''}.
+              </p>
+            ) : (
+              seasonFixtures.map((m, i) => (
+                <FixtureCard key={m.id} match={m} isLast={i === seasonFixtures.length - 1} />
+              ))
+            )
           )}
         </section>
       )}
@@ -222,6 +366,10 @@ function SeasonPicker({
   value: string
   onChange: (season: string) => void
 }) {
+  // Split into Sofascore seasons ("YYYY–YY") and historical years ("YYYY")
+  const recent   = seasons.filter(s => s.includes('–'))
+  const historic = seasons.filter(s => /^\d{4}$/.test(s)).sort((a, b) => Number(b) - Number(a))
+
   return (
     <div className="relative mb-2" style={{ flexShrink: 0 }}>
       <select
@@ -235,11 +383,12 @@ function SeasonPicker({
           fontFamily: 'inherit',
         }}
       >
-        {seasons.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
+        {recent.map((s) => <option key={s} value={s}>{s}</option>)}
+        {historic.length > 0 && (
+          <optgroup label="── Historical ──">
+            {historic.map((s) => <option key={s} value={s}>{s}</option>)}
+          </optgroup>
+        )}
       </select>
       <ChevronDown
         size={12}
