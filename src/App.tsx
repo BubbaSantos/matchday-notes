@@ -4,6 +4,8 @@ import { Home } from './pages/Home'
 import { MatchDay } from './pages/MatchDay'
 import { Search } from './pages/Search'
 import { Login } from './pages/Login'
+import { History } from './pages/History'
+import { HistoricalMatch } from './pages/HistoricalMatch'
 import { UpdateBanner } from './components/UpdateBanner'
 import { useAppUpdate } from './hooks/useAppUpdate'
 import { AuthProvider } from './hooks/useAuth'
@@ -23,6 +25,9 @@ function App() {
               <Route path="/match/:id" element={<MatchDay />} />
               <Route path="/search" element={<Search />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/history/match/:slug" element={<HistoricalMatch />} />
+              <Route path="/history/:year" element={<History />} />
             </Routes>
           </main>
         </div>

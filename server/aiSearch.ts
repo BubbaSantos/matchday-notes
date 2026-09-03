@@ -65,8 +65,7 @@ function stripAccents(s: string): string {
 function playerNameMatch(query: string, name: string): boolean {
   const q = stripAccents(query.toLowerCase().trim())
   const n = stripAccents(name.toLowerCase())
-  if (n.includes(q)) return true
-  // Also match last-name only: "hatate" matches "R. Hatate"
+  // Match word-prefix only: "hogh" matches "K. Høgh" but not "Urhoghide"
   const parts = n.split(/[\s.]+/).filter(Boolean)
   return parts.some((p) => p.startsWith(q) && p.length >= q.length)
 }

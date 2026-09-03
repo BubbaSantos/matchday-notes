@@ -167,7 +167,7 @@ export function FixtureCard({ match, isLast }: { match: MatchEntry; isLast: bool
                   className="text-sm leading-relaxed line-clamp-1 mt-1 m-0"
                   style={{ color: 'var(--color-ink-muted)', fontSize: '0.8rem' }}
                 >
-                  {match.notes}
+                  {match.notes.replace(/^#+\s*/gm, '')}
                 </p>
               )}
             </div>
