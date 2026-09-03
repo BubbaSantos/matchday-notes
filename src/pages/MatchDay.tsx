@@ -514,7 +514,7 @@ function WikiReportTab({ report }: { report: NonNullable<WikiMatchData['report']
   }
 
   return (
-    <div className="space-y-5" style={{ fontSize: '0.875rem', color: 'var(--color-ink-secondary)', lineHeight: 1.75 }}>
+    <div className="space-y-5" style={{ fontSize: '0.875rem', color: 'var(--color-ink-secondary)', lineHeight: 1.75, overflowWrap: 'break-word', wordBreak: 'break-word', minWidth: 0 }}>
       {allKeys.map(key => {
         const cleaned = cleanReportText(sections[key])
         if (!cleaned) return null
