@@ -131,7 +131,7 @@ function parsePlayers(playerText: string): { starters: HistoricalPlayer[]; subs:
   return { starters, subs }
 }
 
-export function parseTeamsSection(text: string, celticTeamName = 'Celtic'): ParsedMatch {
+export function parseTeamsSection(text: string): ParsedMatch {
   const result: ParsedMatch = {
     celticLineup: null,
     opponentLineup: null,
