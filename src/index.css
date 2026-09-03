@@ -37,7 +37,7 @@
   --color-comp-ucl: #0a2a5c;
   --color-comp-friendly: #5c5040;
 
-  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-serif: 'Lora', Georgia, serif;
   --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -75,3 +75,28 @@ input, textarea, select {
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 
 .font-journal { font-family: var(--font-serif); }
+
+.notes-rendered p { margin: 0 0 0.75em; }
+.notes-rendered p:last-child { margin-bottom: 0; }
+.notes-rendered h2 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-faint);
+  margin: 1.25em 0 0.4em;
+  font-family: var(--font-sans);
+}
+.notes-rendered h2:first-child { margin-top: 0; }
+.notes-rendered h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 1em 0 0.3em;
+}
+.notes-rendered ul, .notes-rendered ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.notes-rendered li { margin-bottom: 0.2em; }
+.notes-rendered strong { font-weight: 600; color: var(--color-ink); }
+.notes-rendered em { font-style: italic; }

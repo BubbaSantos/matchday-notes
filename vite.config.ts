@@ -9,6 +9,7 @@ import { handleTranscribeRequest } from './server/transcribe.js'
 import { fetchStanding, fetchInjuries } from './server/sportmonks.js'
 import { handleSignup, handleLogin, handleLogout, handleMe } from './server/authHandlers.js'
 import { handleGetNotes, handleSaveText, handleVoicePost, handleVoiceDelete, handleImport } from './server/notesHandlers.js'
+import { handleAiSearchRequest } from './server/aiSearch.js'
 
 async function handleTableRequest(req: IncomingMessage, res: ServerResponse) {
   try {
@@ -165,6 +166,11 @@ export default defineConfig(({ mode }) => {
         server.middlewares.use('/api/notes', (req, res, next) => {
           if (req.method !== 'GET') { next(); return }
           handleGetNotes(req, res)
+        })
+
+        server.middlewares.use('/api/ai-search', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return }
+          handleAiSearchRequest(req, res)
         })
       },
     },

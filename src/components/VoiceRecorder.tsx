@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Mic, Square, Loader2 } from 'lucide-react'
+import { Mic, Loader2 } from 'lucide-react'
 import { transcribeAudio } from '../lib/transcribeClient'
 
 function pickMimeType(): string | undefined {
@@ -14,13 +14,32 @@ function formatElapsed(seconds: number) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+const HEADINGS: [RegExp, string][] = [
+  [/\bpre[- ]?match\b/gi, 'Pre-match'],
+  [/\bpost[- ]?match\b/gi, 'Post-match'],
+  [/\bhalf[- ]?time\b/gi, 'Half-time'],
+  [/\bfull[- ]?time\b/gi, 'Full-time'],
+  [/\bfirst half\b/gi, 'First half'],
+  [/\bsecond half\b/gi, 'Second half'],
+  [/\bman of the match\b/gi, 'Man of the Match'],
+  [/\bkey moment[s]?\b/gi, 'Key moments'],
+  [/\bsummary\b/gi, 'Summary'],
+]
+
+function formatTranscript(raw: string): string {
+  let text = raw.trim()
+  for (const [pattern, label] of HEADINGS) {
+    text = text.replace(
+      new RegExp(pattern.source + '[,.:;]?\\s*', 'gi'),
+      `\n\n## ${label}\n`
+    )
+  }
+  return text.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 type Status = 'idle' | 'recording' | 'transcribing' | 'error'
 
-export function VoiceRecorder({
-  onSaved,
-}: {
-  onSaved: (blob: Blob, transcript: string, duration: number) => void
-}) {
+export function VoiceRecorder({ onTranscribed }: { onTranscribed: (text: string) => void }) {
   const [status, setStatus] = useState<Status>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +75,6 @@ export function VoiceRecorder({
     const mr = mediaRecorderRef.current
     if (!mr) return
     window.clearInterval(timerRef.current)
-    const duration = (Date.now() - startRef.current) / 1000
 
     const blob = await new Promise<Blob>((resolve) => {
       mr.onstop = () => {
@@ -68,12 +86,11 @@ export function VoiceRecorder({
 
     setStatus('transcribing')
     try {
-      const transcript = await transcribeAudio(blob)
-      onSaved(blob, transcript, duration)
+      const raw = await transcribeAudio(blob)
+      onTranscribed(formatTranscript(raw))
       setStatus('idle')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Transcription failed — saved without a transcript.')
-      onSaved(blob, '', duration)
+      setError(e instanceof Error ? e.message : 'Transcription failed.')
       setStatus('error')
     }
   }
@@ -84,10 +101,13 @@ export function VoiceRecorder({
         <button
           onClick={stopRecording}
           className="flex items-center gap-2 rounded-full border-none cursor-pointer px-3 py-1.5"
-          style={{ backgroundColor: 'var(--color-loss)', color: '#fff', fontFamily: 'inherit' }}
+          style={{ backgroundColor: 'var(--color-loss)', color: '#fff', fontFamily: 'inherit', fontSize: '0.8rem' }}
         >
-          <Square size={12} fill="currentColor" />
-          <span className="font-mono tabular-nums" style={{ fontSize: '0.8rem' }}>{formatElapsed(elapsed)}</span>
+          <span
+            className="inline-block rounded-full"
+            style={{ width: 8, height: 8, backgroundColor: '#fff', animation: 'pulse 1s infinite' }}
+          />
+          Recording {formatElapsed(elapsed)}
         </button>
       ) : status === 'transcribing' ? (
         <span
@@ -101,13 +121,13 @@ export function VoiceRecorder({
         <button
           onClick={startRecording}
           className="flex items-center gap-2 rounded-full border cursor-pointer px-3 py-1.5"
-          style={{ backgroundColor: 'transparent', borderColor: 'var(--color-border)', color: 'var(--color-ink-muted)', fontFamily: 'inherit' }}
+          style={{ backgroundColor: 'transparent', borderColor: 'var(--color-border)', color: 'var(--color-ink-muted)', fontFamily: 'inherit', fontSize: '0.8rem' }}
         >
           <Mic size={13} />
-          <span style={{ fontSize: '0.8rem' }}>Record voice note</span>
+          Record voice note
         </button>
       )}
-      {error && (
+      {(status === 'idle' || status === 'error') && error && (
         <span style={{ color: 'var(--color-loss)', fontSize: '0.72rem' }}>{error}</span>
       )}
     </div>

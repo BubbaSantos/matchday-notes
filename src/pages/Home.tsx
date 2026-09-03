@@ -19,7 +19,7 @@ export function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
   const currentSeasonLabel = getSeason(new Date().toISOString())
   const filter = (searchParams.get('comp') as Filter) || 'all'
-  const section = (searchParams.get('section') as Section) || 'upcoming'
+  const section = (searchParams.get('section') as Section) || 'played'
   const selectedSeason = searchParams.get('season') || currentSeasonLabel
 
   function setFilter(f: Filter) {
@@ -33,7 +33,7 @@ export function Home() {
   function setSection(s: Section) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      if (s === 'upcoming') next.delete('section'); else next.set('section', s)
+      if (s === 'played') next.delete('section'); else next.set('section', s)
       return next
     }, { replace: true })
   }

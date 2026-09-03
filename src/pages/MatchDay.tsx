@@ -1,5 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { ArrowLeft, MapPin, ChevronDown } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { useMatchNotes, type MatchNotes } from '../hooks/useMatchNotes'
@@ -11,7 +12,6 @@ import { LeagueTable } from '../components/LeagueTable'
 import { MatchIncidents, MatchStats } from '../components/MatchEvents'
 import { Lineups } from '../components/Lineups'
 import { VoiceRecorder } from '../components/VoiceRecorder'
-import { VoiceNoteList } from '../components/VoiceNoteList'
 import type { MatchEntry, SSMatchData, TableRow } from '../types'
 
 function formatFullDate(iso: string) {
@@ -266,41 +266,64 @@ function NotesBlock({
   saving: boolean
   placeholder: string
 }) {
+  const [editing, setEditing] = useState(!draft)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  function autoResize() {
+  const autoResize = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-  }
+  }, [])
 
-  // Grow to fit whatever draft was restored (e.g. after switching tabs and
-  // back) as soon as this is mounted, not just on the next keystroke.
   useEffect(() => {
-    autoResize()
-  }, [draft])
+    if (editing) {
+      autoResize()
+      textareaRef.current?.focus()
+    }
+  }, [editing, autoResize])
+
+  useEffect(() => {
+    if (editing) autoResize()
+  }, [draft, editing, autoResize])
+
+  // Switch to edit mode when transcript arrives (draft changes externally)
+  const prevDraft = useRef(draft)
+  useEffect(() => {
+    if (draft !== prevDraft.current && !editing) setEditing(true)
+    prevDraft.current = draft
+  }, [draft, editing])
 
   return (
     <div>
-      <textarea
-        ref={textareaRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        placeholder={placeholder}
-        rows={1}
-        className="font-journal block w-full resize-none leading-relaxed"
-        style={{
-          background: 'none',
-          border: 'none',
-          outline: 'none',
-          color: 'var(--color-ink-secondary)',
-          padding: 0,
-          fontFamily: 'inherit',
-          fontSize: '0.975rem',
-          overflow: 'hidden',
-        }}
-      />
+      {editing ? (
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { if (draft.trim()) setEditing(false) }}
+          placeholder={placeholder}
+          rows={1}
+          className="font-journal block w-full resize-none leading-relaxed"
+          style={{
+            background: 'none',
+            border: 'none',
+            outline: 'none',
+            color: 'var(--color-ink-secondary)',
+            padding: 0,
+            fontSize: '0.975rem',
+            overflow: 'hidden',
+          }}
+        />
+      ) : (
+        <div
+          onClick={() => setEditing(true)}
+          className="font-journal cursor-text notes-rendered leading-relaxed"
+          style={{ color: 'var(--color-ink-secondary)', fontSize: '0.975rem', minHeight: '1.5em' }}
+        >
+          <ReactMarkdown>{draft}</ReactMarkdown>
+        </div>
+      )}
       {(saving || postedAt) && (
         <div className="mt-1.5" style={{ color: 'var(--color-ink-faint)', fontSize: '0.72rem' }}>
           {saving ? 'Saving…' : postedAt && formatPostedAt(postedAt)}
@@ -347,10 +370,11 @@ function InlineLeagueTable({
 }) {
   const [expanded, setExpanded] = useState(false)
 
-  const activeRows = isPast ? (tables[phase] ?? tables.after) : tables.after
-  const celticRow = activeRows?.find((r) => r.team === 'Celtic')
-    ?? (activeRows && activeRows.length > 0
-      ? { team: 'Celtic', position: activeRows.length + 1, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0 }
+  const currentRows = tables.after
+  const expandedRows = isPast ? (tables[phase] ?? tables.after) : tables.after
+  const celticRow = currentRows?.find((r) => r.team === 'Celtic')
+    ?? (currentRows && currentRows.length > 0
+      ? { team: 'Celtic', position: currentRows.length + 1, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0 }
       : undefined)
 
   // Build position-change map: team → delta (positive = moved up)
@@ -360,7 +384,7 @@ function InlineLeagueTable({
     const changes = new Map<string, number>()
     for (const row of tables.after) {
       const before = beforeMap.get(row.team)
-      if (before != null) changes.set(row.team, before - row.position) // positive = moved up
+      if (before != null) changes.set(row.team, before - row.position)
     }
     return changes
   })()
@@ -370,37 +394,11 @@ function InlineLeagueTable({
       className="border-t mt-4 pt-3"
       style={{ borderColor: 'var(--color-border-subtle)', marginInline: '-1.25rem', paddingInline: '1.25rem' }}
     >
-      {/* Phase toggle (before/after) — only for played Premiership games */}
-      {isPast && (
-        <div className="flex gap-0 mb-2" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          {(['before', 'after'] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPhase(p)}
-              className="border-none cursor-pointer px-0 py-1 mr-4"
-              style={{
-                background: 'none',
-                fontFamily: 'inherit',
-                fontSize: '0.62rem',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                color: phase === p ? 'var(--color-ink)' : 'var(--color-ink-faint)',
-                fontWeight: phase === p ? 600 : 400,
-                borderBottom: phase === p ? '2px solid var(--color-accent)' : '2px solid transparent',
-                marginBottom: -1,
-              }}
-            >
-              {p === 'before' ? 'Before match' : 'After match'}
-            </button>
-          ))}
-        </div>
-      )}
-
       {loading ? (
         <div className="h-8 animate-pulse rounded" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
       ) : (
         <>
-          {/* Collapsed: just Celtic's row */}
+          {/* Collapsed: just Celtic's current standing */}
           {!expanded && celticRow && (
             <button
               onClick={() => setExpanded(true)}
@@ -433,10 +431,34 @@ function InlineLeagueTable({
             </button>
           )}
 
-          {/* Expanded: full table */}
-          {expanded && activeRows && (
+          {/* Expanded: before/after toggle + full table */}
+          {expanded && expandedRows && (
             <div>
-              <LeagueTable rows={activeRows} secondaryHighlight={opponent} positionChanges={positionChanges} />
+              {isPast && (
+                <div className="flex gap-0 mb-2" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                  {(['before', 'after'] as const).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPhase(p)}
+                      className="border-none cursor-pointer px-0 py-1 mr-4"
+                      style={{
+                        background: 'none',
+                        fontFamily: 'inherit',
+                        fontSize: '0.62rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        color: phase === p ? 'var(--color-ink)' : 'var(--color-ink-faint)',
+                        fontWeight: phase === p ? 600 : 400,
+                        borderBottom: phase === p ? '2px solid var(--color-accent)' : '2px solid transparent',
+                        marginBottom: -1,
+                      }}
+                    >
+                      {p === 'before' ? 'Before match' : 'After match'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <LeagueTable rows={expandedRows} secondaryHighlight={opponent} positionChanges={positionChanges} />
               <button
                 onClick={() => setExpanded(false)}
                 className="w-full text-center border-none cursor-pointer mt-2 py-1"
@@ -549,6 +571,95 @@ function MatchTabs({
   )
 }
 
+function MarkdownHelp() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  const shortcuts = [
+    { syntax: '## Heading', result: 'Section heading' },
+    { syntax: '**bold**', result: 'Bold text' },
+    { syntax: '*italic*', result: 'Italic text' },
+    { syntax: '- item', result: 'Bullet list' },
+    { syntax: '1. item', result: 'Numbered list' },
+  ]
+
+  const voiceCues = [
+    'pre-match', 'post-match', 'half-time', 'full-time',
+    'first half', 'second half', 'man of the match', 'key moments', 'summary',
+  ]
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Markdown help"
+        className="border-none cursor-pointer rounded-full flex items-center justify-center"
+        style={{
+          width: 16, height: 16, padding: 0,
+          background: 'var(--color-border)',
+          color: 'var(--color-ink-faint)',
+          fontSize: '0.6rem', fontWeight: 700, fontFamily: 'inherit',
+          lineHeight: 1,
+        }}
+      >
+        ?
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 rounded-lg border shadow-md z-50"
+          style={{
+            top: 'calc(100% + 6px)',
+            width: 240,
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border)',
+            padding: '0.875rem',
+          }}
+        >
+          <div style={{ fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', marginBottom: '0.5rem' }}>
+            Formatting
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+            <tbody>
+              {shortcuts.map(({ syntax, result }) => (
+                <tr key={syntax}>
+                  <td style={{ padding: '2px 8px 2px 0', fontFamily: 'monospace', color: 'var(--color-accent)', whiteSpace: 'nowrap' }}>{syntax}</td>
+                  <td style={{ padding: '2px 0', color: 'var(--color-ink-muted)' }}>{result}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', margin: '0.75rem 0 0.4rem' }}>
+            Voice cues → headings
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {voiceCues.map((cue) => (
+              <span
+                key={cue}
+                style={{
+                  fontSize: '0.65rem', padding: '1px 6px', borderRadius: 3,
+                  backgroundColor: 'var(--color-accent-faint)',
+                  color: 'var(--color-accent)',
+                }}
+              >
+                {cue}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EmptyTabMessage({ isPast, thing }: { isPast: boolean; thing: string }) {
   return (
     <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.85rem' }}>
@@ -590,7 +701,13 @@ function NotesTab({
         </Block>
       )}
 
-      <Block title="Notes">
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <div style={{ color: 'var(--color-ink-faint)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 500 }}>
+            Notes
+          </div>
+          <MarkdownHelp />
+        </div>
         <NotesBlock
           draft={notes.draft}
           setDraft={notes.setDraft}
@@ -599,14 +716,14 @@ function NotesTab({
           placeholder={isPast ? 'What did you make of it…' : 'How are you feeling about this one…'}
         />
         <div className="mt-2.5">
-          <VoiceRecorder onSaved={(blob, transcript, duration) => notes.saveVoiceNote(blob, transcript, duration)} />
+          <VoiceRecorder
+            onTranscribed={(text) => {
+              const current = notes.draft.trim()
+              notes.setDraft(current ? current + '\n\n' + text : text)
+            }}
+          />
         </div>
-        {notes.voiceNotes.length > 0 && (
-          <div className="mt-2.5">
-            <VoiceNoteList notes={notes.voiceNotes} onDelete={(id) => notes.removeVoiceNote(id)} />
-          </div>
-        )}
-      </Block>
+      </div>
     </div>
   )
 }

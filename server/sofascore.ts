@@ -274,12 +274,14 @@ export function matchEventsCacheControl(date: string): string {
 }
 
 export async function fetchSofascoreData(date: string): Promise<SSData | null> {
-  const eventId = await getSofascoreId(date)
-  if (!eventId) return null
-
+  // Check Redis before doing the event-ID lookup — cached data is usable even
+  // if this date has aged out of the in-memory ssDateMap index.
   const cacheKey = `ss:match:${date}`
   const cached = await cacheGet<SSData>(cacheKey)
   if (cached) return cached
+
+  const eventId = await getSofascoreId(date)
+  if (!eventId) return null
 
   const base = `https://api.sofascore.com/api/v1/event/${eventId}`
 
@@ -352,7 +354,8 @@ export async function fetchSofascoreData(date: string): Promise<SSData | null> {
       const isStarter = !(p.substitute as boolean)
       const stats = (p.statistics as Record<string, unknown>) ?? {}
       const mins = stats.minutesPlayed as number | undefined
-      const used = typeof mins === 'number' && mins > 0
+      // Starters always played; subs only if minutesPlayed is available and > 0
+      const used = isStarter || (typeof mins === 'number' && mins > 0)
       const subInfo = subMap.get(shortName)
       players.push({
         name: player.name as string,

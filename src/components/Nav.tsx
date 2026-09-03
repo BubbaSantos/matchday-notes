@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BookOpen, Search, User, LogOut } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
 export function Nav() {
@@ -9,6 +10,18 @@ export function Nav() {
   const isHome = location.pathname === '/'
   const isSearch = location.pathname === '/search'
   const isLogin = location.pathname === '/login'
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   return (
     <nav
@@ -37,15 +50,35 @@ export function Nav() {
         <NavLink to="/" icon={<BookOpen size={15} />} label="Archive" active={isHome} />
         <NavLink to="/search" icon={<Search size={15} />} label="Search" active={isSearch} />
         {username ? (
-          <button
-            onClick={() => logout().then(() => navigate('/'))}
-            title={`Log out ${username}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm border-none cursor-pointer transition-colors"
-            style={{ background: 'none', color: 'var(--color-ink-muted)', fontFamily: 'inherit' }}
-          >
-            <LogOut size={15} />
-            <span>{username}</span>
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm border-none cursor-pointer transition-colors"
+              style={{ background: 'none', color: 'var(--color-ink-muted)', fontFamily: 'inherit' }}
+            >
+              <User size={15} />
+              <span>{username}</span>
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 mt-1 rounded border shadow-sm"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  borderColor: 'var(--color-border)',
+                  minWidth: '120px',
+                }}
+              >
+                <button
+                  onClick={() => { setMenuOpen(false); logout().then(() => navigate('/')) }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm border-none cursor-pointer transition-colors text-left"
+                  style={{ background: 'none', color: 'var(--color-ink-muted)', fontFamily: 'inherit' }}
+                >
+                  <LogOut size={13} />
+                  Log out
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           <NavLink to="/login" icon={<User size={15} />} label="Log in" active={isLogin} />
         )}
