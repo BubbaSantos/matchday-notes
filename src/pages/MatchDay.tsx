@@ -12,8 +12,10 @@ import { LeagueTable } from '../components/LeagueTable'
 import { MatchIncidents, MatchStats } from '../components/MatchEvents'
 import { Lineups } from '../components/Lineups'
 import { VoiceRecorder } from '../components/VoiceRecorder'
-import { cleanReportText } from '../lib/historicalData'
+import { cleanReportText, parseTeamsSection } from '../lib/historicalData'
+import { WikiEventsDisplay, WikiLineupsDisplay } from './HistoricalMatch'
 import type { MatchEntry, SSMatchData, TableRow } from '../types'
+import type { ParsedMatch } from '../lib/historicalData'
 
 function formatFullDate(iso: string) {
   const d = new Date(iso)
@@ -129,7 +131,7 @@ export function MatchDay() {
   const { events, loadingEvents } = useMatchEvents(match)
   const { tables, loadingTables, phase, setPhase, isPremiership } = useMatchTables(match)
   const notes = useMatchNotes(match ? stableMatchKey(match) : undefined)
-  const wikiMatch = useWikiMatch(match)
+  const { wikiMatch, wikiParsed } = useWikiMatch(match)
 
   if (!match && fixtures.length > 0) {
     return (
@@ -246,6 +248,7 @@ export function MatchDay() {
         isPast={isPast}
         notes={notes}
         wikiMatch={wikiMatch}
+        wikiParsed={wikiParsed}
       />
     </div>
   )
@@ -482,7 +485,12 @@ interface WikiMatchData {
   report: { sections: Record<string, string>; images: string[] } | null
 }
 
-function useWikiMatch(match: MatchEntry | undefined): WikiMatchData | null {
+interface WikiMatchResult {
+  wikiMatch: WikiMatchData | null
+  wikiParsed: ParsedMatch | null
+}
+
+function useWikiMatch(match: MatchEntry | undefined): WikiMatchResult {
   const [wikiMatch, setWikiMatch] = useState<WikiMatchData | null>(null)
 
   useEffect(() => {
@@ -500,13 +508,19 @@ function useWikiMatch(match: MatchEntry | undefined): WikiMatchData | null {
       .catch(() => {})
   }, [match?.id, match?.kickoff, match?.phase])
 
-  return wikiMatch
+  const wikiParsed = wikiMatch?.report?.sections?.teams
+    ? parseTeamsSection(wikiMatch.report.sections.teams)
+    : null
+
+  return { wikiMatch, wikiParsed }
 }
+
+const WIKI_SKIP_KEYS = new Set(['teams', 'lineups', 'lineup', 'squads', 'squad', 'stats', 'statistics', 'pictures', 'scorers'])
 
 function WikiReportTab({ report }: { report: NonNullable<WikiMatchData['report']> }) {
   const { sections } = report
   const orderedKeys = ['trivia', 'review']
-  const otherKeys = Object.keys(sections).filter(k => !orderedKeys.includes(k) && k !== 'teams')
+  const otherKeys = Object.keys(sections).filter(k => !orderedKeys.includes(k) && !WIKI_SKIP_KEYS.has(k))
   const allKeys = [...orderedKeys.filter(k => sections[k]), ...otherKeys.filter(k => sections[k])]
 
   if (!allKeys.length) {
@@ -542,6 +556,7 @@ function MatchTabs({
   isPast,
   notes,
   wikiMatch,
+  wikiParsed,
 }: {
   match: MatchEntry
   events: SSMatchData | null
@@ -549,6 +564,7 @@ function MatchTabs({
   isPast: boolean
   notes: MatchNotes
   wikiMatch: WikiMatchData | null
+  wikiParsed: ParsedMatch | null
 }) {
   const hasLineups = !!events && (events.homeLineup.players.length > 0 || events.awayLineup.players.length > 0)
 
@@ -600,6 +616,12 @@ function MatchTabs({
             <div className="rounded h-20 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
           ) : events ? (
             <MatchIncidents data={events} opponentName={match.opponent} />
+          ) : wikiParsed?.events.length ? (
+            <WikiEventsDisplay
+              events={wikiParsed.events}
+              celticName="Celtic"
+              opponentName={match.opponent}
+            />
           ) : (
             <EmptyTabMessage isPast={isPast} thing="events" />
           )
@@ -620,6 +642,8 @@ function MatchTabs({
             <div className="rounded h-40 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
           ) : hasLineups ? (
             <Lineups data={events!} />
+          ) : wikiParsed && (wikiParsed.celticLineup || wikiParsed.opponentLineup) ? (
+            <WikiLineupsDisplay celtic={wikiParsed.celticLineup} opponent={wikiParsed.opponentLineup} />
           ) : (
             <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.85rem' }}>
               {isPast ? 'No lineup available for this match.' : "Lineup isn't out yet — checking automatically every 5 minutes from 75 minutes before kickoff."}

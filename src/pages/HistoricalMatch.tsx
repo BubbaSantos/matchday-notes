@@ -44,98 +44,93 @@ function resultColors(match: HistoricalMatch) {
 
 // ── Events tab ────────────────────────────────────────────────────────────────
 
-function EventsTab({ events, celticName, opponentName, report }: {
+const EVENT_ICONS: Record<HistoricalEvent['type'], string> = {
+  goal: '⚽', ownGoal: '⚽', yellowCard: '🟨', redCard: '🟥',
+}
+
+export function WikiEventsDisplay({ events, celticName, opponentName }: {
   events: HistoricalEvent[]
   celticName: string
   opponentName: string
-  report: { sections: Record<string, string> } | null
 }) {
-  if (!events.length && !report?.sections?.review && !report?.sections?.trivia) {
+  if (!events.length) return null
+  return (
+    <div>
+      <div className="flex justify-between mb-2 px-1" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
+        <span>{celticName}</span>
+        <span>{opponentName}</span>
+      </div>
+      <div className="space-y-1">
+        {events.map((ev, i) => (
+          <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded" style={{ backgroundColor: 'var(--color-surface)' }}>
+            {ev.isCeltic ? (
+              <>
+                <span style={{ fontSize: '0.75rem' }}>{EVENT_ICONS[ev.type]}</span>
+                <span style={{ color: 'var(--color-ink)', fontSize: '0.85rem' }}>{ev.player}</span>
+                {ev.type === 'ownGoal' && <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>(og)</span>}
+                <span className="ml-auto font-mono" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>{ev.minute != null ? `${ev.minute}'` : ''}</span>
+              </>
+            ) : (
+              <>
+                <span className="font-mono" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>{ev.minute != null ? `${ev.minute}'` : ''}</span>
+                <span className="ml-auto" style={{ color: 'var(--color-ink)', fontSize: '0.85rem' }}>{ev.player}</span>
+                {ev.type === 'ownGoal' && <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>(og)</span>}
+                <span style={{ fontSize: '0.75rem' }}>{EVENT_ICONS[ev.type]}</span>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export function WikiLineupsDisplay({ celtic, opponent }: {
+  celtic: HistoricalLineup | null
+  opponent: HistoricalLineup | null
+}) {
+  if (!celtic && !opponent) return (
+    <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No lineup available for this match.</p>
+  )
+  return <LineupsTab celtic={celtic} opponent={opponent} />
+}
+
+function EventsTab({ events, celticName, opponentName }: {
+  events: HistoricalEvent[]
+  celticName: string
+  opponentName: string
+}) {
+  if (!events.length) {
     return <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No events recorded for this match.</p>
   }
+  return <WikiEventsDisplay events={events} celticName={celticName} opponentName={opponentName} />
+}
 
-  const ICONS: Record<HistoricalEvent['type'], string> = {
-    goal: '⚽',
-    ownGoal: '⚽',
-    yellowCard: '🟨',
-    redCard: '🟥',
-  }
+const SKIP_REPORT_KEYS = new Set(['trivia', 'review', 'teams', 'articles', 'pictures', 'intro'])
+
+function ReportTab({ report }: { report: { sections: Record<string, string> } }) {
+  const { sections } = report
+  const keys = ['trivia', 'review', ...Object.keys(sections).filter(k => !SKIP_REPORT_KEYS.has(k))]
+    .filter(k => sections[k])
+
+  if (!keys.length) return (
+    <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No report text available.</p>
+  )
+
+  const labels: Record<string, string> = { trivia: 'Trivia', review: 'Match Report' }
 
   return (
     <div className="space-y-5">
-      {events.length > 0 && (
-        <div>
-          {/* Team headers */}
-          <div className="flex justify-between mb-2 px-1" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
-            <span>{celticName}</span>
-            <span>{opponentName}</span>
+      {keys.map(key => (
+        <div key={key}>
+          <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
+            {labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
           </div>
-
-          <div className="space-y-1">
-            {events.map((ev, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 py-1.5 px-2 rounded"
-                style={{ backgroundColor: 'var(--color-surface)' }}
-              >
-                {ev.isCeltic ? (
-                  <>
-                    <span style={{ fontSize: '0.75rem' }}>{ICONS[ev.type]}</span>
-                    <span style={{ color: 'var(--color-ink)', fontSize: '0.85rem' }}>{ev.player}</span>
-                    {ev.type === 'ownGoal' && <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>(og)</span>}
-                    <span className="ml-auto font-mono" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>
-                      {ev.minute != null ? `${ev.minute}'` : ''}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-mono" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>
-                      {ev.minute != null ? `${ev.minute}'` : ''}
-                    </span>
-                    <span className="ml-auto" style={{ color: 'var(--color-ink)', fontSize: '0.85rem' }}>{ev.player}</span>
-                    {ev.type === 'ownGoal' && <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>(og)</span>}
-                    <span style={{ fontSize: '0.75rem' }}>{ICONS[ev.type]}</span>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Match report text */}
-      {report?.sections?.trivia && (
-        <div>
-          <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>Trivia</div>
           <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-            <ReactMarkdown>{report.sections.trivia}</ReactMarkdown>
+            <ReactMarkdown>{sections[key]}</ReactMarkdown>
           </div>
         </div>
-      )}
-
-      {report?.sections?.review && (
-        <div>
-          <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>Match Report</div>
-          <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-            <ReactMarkdown>{report.sections.review}</ReactMarkdown>
-          </div>
-        </div>
-      )}
-
-      {/* Other named report sections (e.g. newspaper articles) */}
-      {report?.sections && Object.entries(report.sections)
-        .filter(([k]) => !['trivia', 'review', 'teams', 'articles', 'pictures', 'intro'].includes(k))
-        .map(([key, text]) => (
-          <div key={key}>
-            <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
-              {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-            </div>
-            <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-              <ReactMarkdown>{text}</ReactMarkdown>
-            </div>
-          </div>
-        ))
-      }
+      ))}
     </div>
   )
 }
@@ -313,7 +308,7 @@ function NotesTab({ notes }: { notes: MatchNotes }) {
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'events' | 'lineups' | 'notes' | 'pictures'
+type Tab = 'events' | 'lineups' | 'report' | 'pictures' | 'notes'
 
 function MatchTabs({ match, parsed, notes }: {
   match: HistoricalMatch
@@ -321,11 +316,13 @@ function MatchTabs({ match, parsed, notes }: {
   notes: MatchNotes
 }) {
   const hasPictures = (match.pictures?.length ?? 0) > 0
+  const hasReport = !!(match.report?.sections && (match.report.sections.review || match.report.sections.trivia || Object.keys(match.report.sections).some(k => !SKIP_REPORT_KEYS.has(k))))
   const [tab, setTab] = useState<Tab>('events')
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'events', label: 'Events' },
     { key: 'lineups', label: 'Lineups' },
+    ...(hasReport ? [{ key: 'report' as Tab, label: 'Report' }] : []),
     { key: 'pictures', label: hasPictures ? `Pictures (${match.pictures.length})` : 'Pictures' },
     { key: 'notes', label: 'Notes' },
   ]
@@ -335,7 +332,7 @@ function MatchTabs({ match, parsed, notes }: {
 
   return (
     <div className="mt-4">
-      <div className="flex" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+      <div className="flex flex-wrap" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
         {tabs.map(t => (
           <button
             key={t.key}
@@ -356,20 +353,10 @@ function MatchTabs({ match, parsed, notes }: {
       </div>
 
       <div className="pt-4">
-        {tab === 'events' && (
-          <EventsTab
-            events={parsed.events}
-            celticName={celticName}
-            opponentName={oppName}
-            report={match.report}
-          />
-        )}
-        {tab === 'lineups' && (
-          <LineupsTab celtic={parsed.celticLineup} opponent={parsed.opponentLineup} />
-        )}
-        {tab === 'pictures' && (
-          <PicturesTab pictures={match.pictures ?? []} pictureUrl={match.pictureUrl} />
-        )}
+        {tab === 'events' && <EventsTab events={parsed.events} celticName={celticName} opponentName={oppName} />}
+        {tab === 'lineups' && <LineupsTab celtic={parsed.celticLineup} opponent={parsed.opponentLineup} />}
+        {tab === 'report' && match.report && <ReportTab report={match.report} />}
+        {tab === 'pictures' && <PicturesTab pictures={match.pictures ?? []} pictureUrl={match.pictureUrl} />}
         {tab === 'notes' && <NotesTab notes={notes} />}
       </div>
     </div>
