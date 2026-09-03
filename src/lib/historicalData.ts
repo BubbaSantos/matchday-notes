@@ -1,5 +1,30 @@
 // Parser for Celtic Wiki match data (teams section → structured events + lineups)
 
+// Strip raw URLs, navigation noise, and dead-link text from report section text
+export function cleanReportText(text: string): string {
+  return text
+    .split('\n')
+    .map(line => {
+      // Remove inline URLs
+      let l = line.replace(/https?:\/\/\S+/g, '').trim()
+      // Remove bare www. links
+      l = l.replace(/www\.\S+/g, '').trim()
+      return l
+    })
+    // Drop lines that are purely URL-like or navigation artifacts
+    .filter(line => {
+      if (!line) return false
+      if (/^https?:\/\//i.test(line)) return false
+      if (/^www\./i.test(line)) return false
+      // Drop tab/navigation lines that crept in as text nodes
+      if (/^\s*[\t]+\s*$/.test(line)) return false
+      return true
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')  // collapse multiple blank lines
+    .trim()
+}
+
 export interface HistoricalPlayer {
   name: string
   subbedOff?: number   // minute subbed off
@@ -26,6 +51,28 @@ export interface ParsedMatch {
   events: HistoricalEvent[]
   attendance: string | null
   referee: string | null
+}
+
+// ── Season helpers ────────────────────────────────────────────────────────────
+
+// Returns the football season label for a date, e.g. "1967-68" or "2023-24"
+export function wikiSeasonLabel(dateStr: string | null): string | null {
+  if (!dateStr) return null
+  const d = new Date(dateStr)
+  const year = d.getFullYear()
+  const month = d.getMonth() + 1 // 1-12
+  const startYear = month >= 7 ? year : year - 1
+  return `${startYear}-${String(startYear + 1).slice(-2)}`
+}
+
+// Returns the two calendar years that make up a season label like "1967-68"
+export function seasonToYears(label: string): [number, number] {
+  const startYear = parseInt(label)
+  const endShort  = label.slice(-2)
+  const century   = Math.floor(startYear / 100) * 100
+  let endYear = century + parseInt(endShort)
+  if (endYear <= startYear) endYear += 100
+  return [startYear, endYear]
 }
 
 // ── Competition normaliser ────────────────────────────────────────────────────

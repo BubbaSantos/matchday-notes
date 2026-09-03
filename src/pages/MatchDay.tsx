@@ -12,6 +12,7 @@ import { LeagueTable } from '../components/LeagueTable'
 import { MatchIncidents, MatchStats } from '../components/MatchEvents'
 import { Lineups } from '../components/Lineups'
 import { VoiceRecorder } from '../components/VoiceRecorder'
+import { cleanReportText } from '../lib/historicalData'
 import type { MatchEntry, SSMatchData, TableRow } from '../types'
 
 function formatFullDate(iso: string) {
@@ -128,6 +129,7 @@ export function MatchDay() {
   const { events, loadingEvents } = useMatchEvents(match)
   const { tables, loadingTables, phase, setPhase, isPremiership } = useMatchTables(match)
   const notes = useMatchNotes(match ? stableMatchKey(match) : undefined)
+  const wikiMatch = useWikiMatch(match)
 
   if (!match && fixtures.length > 0) {
     return (
@@ -243,6 +245,7 @@ export function MatchDay() {
         loadingEvents={loadingEvents}
         isPast={isPast}
         notes={notes}
+        wikiMatch={wikiMatch}
       />
     </div>
   )
@@ -474,7 +477,61 @@ function InlineLeagueTable({
   )
 }
 
-type MatchTab = 'events' | 'stats' | 'lineups' | 'notes'
+interface WikiMatchData {
+  slug: string
+  report: { sections: Record<string, string>; images: string[] } | null
+}
+
+function useWikiMatch(match: MatchEntry | undefined): WikiMatchData | null {
+  const [wikiMatch, setWikiMatch] = useState<WikiMatchData | null>(null)
+
+  useEffect(() => {
+    if (!match || match.phase !== 'post') return
+    const date = match.kickoff.slice(0, 10)
+    const year = date.slice(0, 4)
+
+    fetch(`/history/${year}.json`)
+      .then(r => r.ok ? r.json() : null)
+      .then((matches: Array<{ date: string | null; slug: string; report: WikiMatchData['report'] }> | null) => {
+        if (!matches) return
+        const found = matches.find(m => m.date === date && m.report?.sections)
+        setWikiMatch(found ? { slug: found.slug, report: found.report } : null)
+      })
+      .catch(() => {})
+  }, [match?.id, match?.kickoff, match?.phase])
+
+  return wikiMatch
+}
+
+function WikiReportTab({ report }: { report: NonNullable<WikiMatchData['report']> }) {
+  const { sections } = report
+  const orderedKeys = ['trivia', 'review']
+  const otherKeys = Object.keys(sections).filter(k => !orderedKeys.includes(k) && k !== 'teams')
+  const allKeys = [...orderedKeys.filter(k => sections[k]), ...otherKeys.filter(k => sections[k])]
+
+  if (!allKeys.length) {
+    return <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.85rem' }}>No report text available.</p>
+  }
+
+  return (
+    <div className="space-y-5" style={{ fontSize: '0.875rem', color: 'var(--color-ink-secondary)', lineHeight: 1.75 }}>
+      {allKeys.map(key => {
+        const cleaned = cleanReportText(sections[key])
+        if (!cleaned) return null
+        return (
+          <div key={key}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', marginBottom: 6 }}>
+              {key.charAt(0).toUpperCase() + key.slice(1)}
+            </div>
+            <p className="m-0 whitespace-pre-wrap">{cleaned}</p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+type MatchTab = 'events' | 'stats' | 'lineups' | 'notes' | 'report'
 
 function MatchTabs({
   match,
@@ -482,12 +539,14 @@ function MatchTabs({
   loadingEvents,
   isPast,
   notes,
+  wikiMatch,
 }: {
   match: MatchEntry
   events: SSMatchData | null
   loadingEvents: boolean
   isPast: boolean
   notes: MatchNotes
+  wikiMatch: WikiMatchData | null
 }) {
   const hasLineups = !!events && (events.homeLineup.players.length > 0 || events.awayLineup.players.length > 0)
 
@@ -505,6 +564,7 @@ function MatchTabs({
     { key: 'stats', label: 'Stats' },
     { key: 'lineups', label: 'Lineups' },
     { key: 'notes', label: 'Notes' },
+    ...(wikiMatch?.report ? [{ key: 'report' as MatchTab, label: 'Report' }] : []),
   ]
 
   return (
@@ -566,6 +626,8 @@ function MatchTabs({
         )}
 
         {tab === 'notes' && <NotesTab match={match} isPast={isPast} notes={notes} />}
+
+        {tab === 'report' && wikiMatch?.report && <WikiReportTab report={wikiMatch.report} />}
       </div>
     </div>
   )

@@ -5,6 +5,7 @@ import { useFixtures } from '../hooks/useFixtures'
 import { FixtureCard } from '../components/FixtureCard'
 import { LeagueTable } from '../components/LeagueTable'
 import { fetchLeagueTable } from '../lib/table'
+import { seasonToYears } from '../lib/historicalData'
 import type { Competition, LeagueStanding, TableRow } from '../types'
 
 type Filter = 'all' | Competition
@@ -118,27 +119,44 @@ export function Home() {
   const [histMatches, setHistMatches] = useState<HistoricalMatch[] | null>(null)
   const [histLoading, setHistLoading] = useState(false)
 
-  // Detect if selected season is a historical calendar year (e.g. "2002") vs "2024-25"
-  const isHistorical = /^\d{4}$/.test(selectedSeason)
+  // Detect if selected season is a historical wiki season (e.g. "1967-68") vs Sofascore "2024–25"
+  // Sofascore seasons use an en-dash (–), wiki seasons use a hyphen (-)
+  const isHistorical = /^\d{4}-\d{2}$/.test(selectedSeason)
 
   // Load historical index once
   useEffect(() => {
     fetch('/history/index.json').then(r => r.json()).then(setHistIndex).catch(() => {})
   }, [])
 
-  // Load historical matches when a historical year is selected
+  // Load historical matches when a historical season is selected (e.g. "1967-68")
   useEffect(() => {
     if (!isHistorical) { setHistMatches(null); return }
     setHistLoading(true)
     setHistMatches(null)
-    fetch(`/history/${selectedSeason}.json`)
-      .then(r => r.json())
-      .then((data: HistoricalMatch[]) => {
-        // Sort newest-first within the year
-        setHistMatches([...data].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')))
-        setHistLoading(false)
+
+    const [startYear, endYear] = seasonToYears(selectedSeason)
+
+    Promise.all([
+      fetch(`/history/${startYear}.json`).then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/history/${endYear}.json`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([startData, endData]: [HistoricalMatch[], HistoricalMatch[]]) => {
+      // From startYear: July–December matches
+      const fromStart = startData.filter(m => {
+        if (!m.date) return false
+        const mo = new Date(m.date).getMonth() + 1
+        return mo >= 7
       })
-      .catch(() => setHistLoading(false))
+      // From endYear: January–June matches
+      const fromEnd = endData.filter(m => {
+        if (!m.date) return false
+        const mo = new Date(m.date).getMonth() + 1
+        return mo < 7
+      })
+      const combined = [...fromStart, ...fromEnd]
+        .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+      setHistMatches(combined)
+      setHistLoading(false)
+    })
   }, [isHistorical, selectedSeason])
 
   function setFilter(f: Filter) {
@@ -173,18 +191,38 @@ export function Home() {
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()) // newest first
   const currentSeasonCount = past.filter((m) => getSeason(m.kickoff) === currentSeasonLabel).length
 
-  // All seasons: Sofascore seasons + historical years from index
+  // All seasons: Sofascore seasons + historical football seasons from wiki index
   const seasons = useMemo(() => {
-    const set = new Set<string>()
-    for (const m of past) set.add(getSeason(m.kickoff))
-    // Append historical years that don't overlap with existing seasons
+    const sofaSeasons = new Set<string>()
+    for (const m of past) sofaSeasons.add(getSeason(m.kickoff))
+
+    const allSeasons = [...sofaSeasons]
+
     if (histIndex) {
-      const earliestSofascore = Math.min(...[...set].map(s => parseInt(s)))
-      for (const y of histIndex) {
-        if (y.year < earliestSofascore) set.add(String(y.year))
+      // Earliest Sofascore season start year
+      const earliestSofaStart = Math.min(...[...sofaSeasons].map(s => parseInt(s)))
+      // Derive football seasons from wiki year index
+      const wikiYears = new Set(histIndex.map(y => y.year))
+      const wikiSeasons = new Set<string>()
+      for (const y of wikiYears) {
+        // Year Y contributes Jul-Dec to season Y-(Y+1)
+        if (wikiYears.has(y + 1) || y + 1 <= new Date().getFullYear()) {
+          const label = `${y}-${String(y + 1).slice(-2)}`
+          wikiSeasons.add(label)
+        }
+        // Year Y contributes Jan-Jun to season (Y-1)-Y
+        if (wikiYears.has(y - 1)) {
+          const label = `${y - 1}-${String(y).slice(-2)}`
+          wikiSeasons.add(label)
+        }
+      }
+      // Only include wiki seasons that predate Sofascore coverage
+      for (const s of [...wikiSeasons].sort((a, b) => parseInt(b) - parseInt(a))) {
+        if (parseInt(s) < earliestSofaStart) allSeasons.push(s)
       }
     }
-    return [...set]
+
+    return allSeasons
   }, [past, histIndex])
 
   const seasonFixtures = past.filter((m) => getSeason(m.kickoff) === selectedSeason)
@@ -366,9 +404,9 @@ function SeasonPicker({
   value: string
   onChange: (season: string) => void
 }) {
-  // Split into Sofascore seasons ("YYYY–YY") and historical years ("YYYY")
+  // Split into Sofascore seasons (en-dash "YYYY–YY") and historical wiki seasons (hyphen "YYYY-YY")
   const recent   = seasons.filter(s => s.includes('–'))
-  const historic = seasons.filter(s => /^\d{4}$/.test(s)).sort((a, b) => Number(b) - Number(a))
+  const historic = seasons.filter(s => /^\d{4}-\d{2}$/.test(s)).sort((a, b) => Number(b) - Number(a))
 
   return (
     <div className="relative mb-2" style={{ flexShrink: 0 }}>

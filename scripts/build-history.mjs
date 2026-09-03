@@ -48,4 +48,18 @@ for (const [year, matches] of Object.entries(byYear)) {
   console.log(`  ${year}: ${matches.length} matches, ${withReport} reports`)
 }
 
+// Build flat search index (lightweight — no report text)
+const searchIndex = raw.map(m => ({
+  date: m.date,
+  slug: m.slug,
+  home: m.home,
+  away: m.away,
+  homeScore: m.homeScore,
+  awayScore: m.awayScore,
+  competition: m.competition,
+  hasReport: !!(m.report?.sections),
+}))
+writeFileSync(`${OUTDIR}/search-index.json`, JSON.stringify(searchIndex))
+console.log(`✓ search-index.json — ${searchIndex.length} matches`)
+
 console.log(`\n✅ Done — ${raw.length} total matches`)

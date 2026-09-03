@@ -1,10 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search as SearchIcon, Sparkles, Loader2, Clock, X } from 'lucide-react'
+import { Search as SearchIcon, Sparkles, Loader2, Clock, X, ChevronRight } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { CompetitionBadge } from '../components/CompetitionBadge'
 import type { MatchEntry, Competition } from '../types'
 import type { PlayerStats } from '../../server/aiSearch'
+
+interface HistoricalSearchEntry {
+  date: string | null
+  slug: string
+  home: string
+  away: string
+  homeScore: number | null
+  awayScore: number | null
+  competition: string
+  hasReport: boolean
+}
 
 // ── Search history ──────────────────────────────────────────────────────────
 
@@ -20,6 +31,70 @@ function saveHistory(q: string) {
 }
 function removeHistory(q: string) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(loadHistory().filter((x) => x !== q)))
+}
+
+// ── Historical search ────────────────────────────────────────────────────────
+
+function histKeywordFilter(entries: HistoricalSearchEntry[], query: string): HistoricalSearchEntry[] {
+  if (!query.trim()) return []
+  const q = query.toLowerCase()
+  return entries
+    .filter(e => {
+      const opponent = e.home === 'Celtic' ? e.away : e.home
+      return (
+        opponent.toLowerCase().includes(q) ||
+        e.competition.toLowerCase().includes(q)
+      )
+    })
+    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+    .slice(0, 30)
+}
+
+function HistoricalMatchCard({ entry }: { entry: HistoricalSearchEntry }) {
+  const isCelticHome = entry.home === 'Celtic'
+  const opponent = isCelticHome ? entry.away : entry.home
+  const celticScore = isCelticHome ? entry.homeScore : entry.awayScore
+  const oppScore = isCelticHome ? entry.awayScore : entry.homeScore
+  const win = celticScore !== null && oppScore !== null && celticScore > oppScore
+  const draw = celticScore !== null && oppScore !== null && celticScore === oppScore
+  const color = win ? 'var(--color-win)' : draw ? 'var(--color-draw)' : 'var(--color-loss)'
+  const dateLabel = entry.date
+    ? new Date(entry.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—'
+  const homeScore = isCelticHome ? celticScore : oppScore
+  const awayScore = isCelticHome ? oppScore : celticScore
+
+  return (
+    <Link to={`/history/match/${encodeURIComponent(entry.slug)}`} className="block no-underline mb-3">
+      <div
+        className="rounded-lg border p-4 transition-colors"
+        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-ink-muted)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)' }}
+      >
+        <div className="flex items-center gap-2 mb-1.5">
+          <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{entry.competition}</span>
+          <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem', marginLeft: 'auto' }}>{dateLabel}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-journal" style={{ color: 'var(--color-ink)', fontSize: '0.975rem' }}>
+            {isCelticHome ? <>Celtic vs {opponent}</> : <>{opponent} vs Celtic</>}
+          </div>
+          {homeScore !== null && awayScore !== null && (
+            <span className="text-base font-bold font-mono tabular-nums flex-shrink-0" style={{ color }}>
+              {homeScore}–{awayScore}
+            </span>
+          )}
+        </div>
+        {entry.hasReport && (
+          <div className="flex items-center gap-1 mt-1.5" style={{ color: 'var(--color-accent)', fontSize: '0.7rem' }}>
+            <ChevronRight size={10} />
+            Match report available
+          </div>
+        )}
+      </div>
+    </Link>
+  )
 }
 
 // ── Keyword filter ───────────────────────────────────────────────────────────
@@ -180,6 +255,14 @@ export function Search() {
 
   const { fixtures } = useFixtures()
   const fixtureMap = new Map(fixtures.map((f) => [f.id, f]))
+  const [histIndex, setHistIndex] = useState<HistoricalSearchEntry[]>([])
+
+  useEffect(() => {
+    fetch('/history/search-index.json')
+      .then(r => r.ok ? r.json() : [])
+      .then(setHistIndex)
+      .catch(() => {})
+  }, [])
 
   // Suggestions: unique opponent names + competitions
   const opponents = Array.from(new Set(fixtures.filter(f => f.phase === 'post').map(f => f.opponent))).sort()
@@ -259,6 +342,7 @@ export function Search() {
   }
 
   const keywordResults = mode === 'keyword' ? keywordFilter(fixtures, query) : []
+  const histResults = mode === 'keyword' ? histKeywordFilter(histIndex, query) : []
   const aiResults = mode === 'ai' && aiResponse
     ? aiResponse.results.map((r) => ({ match: fixtureMap.get(r.id), reason: r.reason }))
         .filter((r): r is { match: MatchEntry; reason: string } => !!r.match)
@@ -414,16 +498,28 @@ export function Search() {
       {/* Keyword results */}
       {mode === 'keyword' && query && (
         <>
-          {keywordResults.length === 0 ? (
+          {keywordResults.length === 0 && histResults.length === 0 ? (
             <p className="text-center py-12 text-sm" style={{ color: 'var(--color-ink-faint)' }}>
               No matches found for "{query}"
             </p>
           ) : (
             <>
-              <p className="mb-3" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>
-                {keywordResults.length} match{keywordResults.length !== 1 ? 'es' : ''} found
-              </p>
-              {keywordResults.map((match) => <MatchCard key={match.id} match={match} />)}
+              {keywordResults.length > 0 && (
+                <>
+                  <p className="mb-3" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>
+                    {keywordResults.length} recent match{keywordResults.length !== 1 ? 'es' : ''}
+                  </p>
+                  {keywordResults.map((match) => <MatchCard key={match.id} match={match} />)}
+                </>
+              )}
+              {histResults.length > 0 && (
+                <>
+                  <p className="mb-3 mt-5" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>
+                    {histResults.length} historical match{histResults.length !== 1 ? 'es' : ''}
+                  </p>
+                  {histResults.map((entry) => <HistoricalMatchCard key={entry.slug} entry={entry} />)}
+                </>
+              )}
             </>
           )}
         </>
