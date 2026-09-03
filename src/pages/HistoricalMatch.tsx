@@ -138,7 +138,7 @@ function ReportSection({ report, reportUrl }: {
     )
   }
 
-  const { sections, images } = report
+  const { sections } = report
 
   // Preferred display order
   const orderedKeys = ['trivia', 'review', 'teams']
@@ -248,7 +248,6 @@ function PicturesSection({ pictures, pictureUrl }: { pictures: string[]; picture
 type Tab = 'report' | 'pictures' | 'notes'
 
 function Tabs({ match, notes }: { match: HistoricalMatch; notes: MatchNotes }) {
-  const hasReport = !!match.report?.sections
   const hasPictures = (match.pictures?.length ?? 0) > 0
 
   const [tab, setTab] = useState<Tab>('report')

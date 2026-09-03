@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronRight } from 'lucide-react'
-import { CompetitionBadge } from '../components/CompetitionBadge'
-import type { Competition } from '../types'
 
 interface YearMeta {
   year: number
@@ -107,7 +105,7 @@ function YearGrid({ index }: { index: YearMeta[] }) {
 
 // ── Match list for a year ────────────────────────────────────────────────────
 
-function YearMatchList({ year, matches }: { year: number; matches: HistoricalMatch[] }) {
+function YearMatchList({ matches }: { year: number; matches: HistoricalMatch[] }) {
   const navigate = useNavigate()
 
   // Group by month
