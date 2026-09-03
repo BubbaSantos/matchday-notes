@@ -100,3 +100,12 @@ input, textarea, select {
 .notes-rendered li { margin-bottom: 0.2em; }
 .notes-rendered strong { font-weight: 600; color: var(--color-ink); }
 .notes-rendered em { font-style: italic; }
+
+/* Match report markdown rendering */
+.report-prose { font-size: 0.875rem; color: var(--color-ink-secondary); line-height: 1.75; }
+.report-prose p { margin: 0 0 0.9em; }
+.report-prose p:last-child { margin-bottom: 0; }
+.report-prose strong { font-weight: 600; color: var(--color-ink); }
+.report-prose em { font-style: italic; }
+.report-prose ul, .report-prose ol { margin: 0.5em 0; padding-left: 1.4em; }
+.report-prose li { margin-bottom: 0.25em; }

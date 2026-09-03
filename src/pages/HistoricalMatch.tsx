@@ -107,14 +107,18 @@ function EventsTab({ events, celticName, opponentName, report }: {
       {report?.sections?.trivia && (
         <div>
           <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>Trivia</div>
-          <p className="m-0 leading-relaxed font-journal" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{report.sections.trivia}</p>
+          <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+            <ReactMarkdown>{report.sections.trivia}</ReactMarkdown>
+          </div>
         </div>
       )}
 
       {report?.sections?.review && (
         <div>
           <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>Match Report</div>
-          <p className="m-0 leading-relaxed font-journal" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{report.sections.review}</p>
+          <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+            <ReactMarkdown>{report.sections.review}</ReactMarkdown>
+          </div>
         </div>
       )}
 
@@ -126,7 +130,9 @@ function EventsTab({ events, celticName, opponentName, report }: {
             <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
               {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
             </div>
-            <p className="m-0 leading-relaxed font-journal" style={{ color: 'var(--color-ink-secondary)', fontSize: '0.9rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{text}</p>
+            <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+              <ReactMarkdown>{text}</ReactMarkdown>
+            </div>
           </div>
         ))
       }

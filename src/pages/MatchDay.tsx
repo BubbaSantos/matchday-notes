@@ -523,7 +523,9 @@ function WikiReportTab({ report }: { report: NonNullable<WikiMatchData['report']
             <div style={{ fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', marginBottom: 6 }}>
               {key.charAt(0).toUpperCase() + key.slice(1)}
             </div>
-            <p className="m-0 whitespace-pre-wrap">{cleaned}</p>
+            <div className="report-prose">
+              <ReactMarkdown>{cleaned}</ReactMarkdown>
+            </div>
           </div>
         )
       })}
