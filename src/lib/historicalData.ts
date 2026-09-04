@@ -210,7 +210,7 @@ export function buildTeamsText(sections: Record<string, string>): string {
       // Keep the colon so hasColonHeaders → parseOldFormat (handles comma-separated players)
       if (/^[A-Z]{2,}(?:[ ][A-Z]+)*:[ \t]+[A-Za-z]/m.test(raw)) {
         return raw.replace(/^([A-Z][A-Z &']+):[ \t]+(.+)$/gm, (_, team, players) =>
-          team.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) + ':\n' + players
+          team.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) + ':\n' + players
         )
       }
       const normalized = raw.replace(/^([A-Za-zÀ-ÿ .'\-&()]+):[-\s]*$/gm, '$1')
@@ -224,7 +224,7 @@ export function buildTeamsText(sections: Record<string, string>): string {
       })
       if (extraKeys.length) {
         const extras = extraKeys.map(k => {
-          const name = k.replace(/_/g, ' ').replace(/['']/g, "'").replace(/\b\w/g, c => c.toUpperCase()).replace(/:$/, '')
+          const name = k.replace(/_/g, ' ').replace(/['']/g, "'").replace(/\b\w/g, (c: string) => c.toUpperCase()).replace(/:$/, '')
           return name + '\n\n' + sections[k]
         }).join('\n\n')
         return normalized + '\n\n' + extras
@@ -245,11 +245,11 @@ export function buildTeamsText(sections: Record<string, string>): string {
     const OLD_FORMAT_NON_TEAM = /^(?:goals?|assists?|subs?(?:stitutes?)?|ref(?:eree)?|att(?:endance)?|notes?|aet|sent|yellow|red|pen|video|source|match|extra|missed|scored|saved|manager|formation|captain|venue|booked)/i
     const inlineNorm = raw.replace(/^([A-Z][A-Za-zÀ-ÿ &']+):[ \t]+([A-Za-zÀ-ÿ(].*)$/gm, (_, team: string, players: string) => {
       if (OLD_FORMAT_NON_TEAM.test(team)) return _
-      return team.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) + ':\n' + players
+      return team.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) + ':\n' + players
     })
     if (oppKeys.length) {
       const extras = oppKeys.map(k => {
-        const name = k.replace(/_/g, ' ').replace(/['']/g, "'").replace(/\b\w/g, c => c.toUpperCase()).replace(/:$/, '')
+        const name = k.replace(/_/g, ' ').replace(/['']/g, "'").replace(/\b\w/g, (c: string) => c.toUpperCase()).replace(/:$/, '')
         return name + '\n\n' + sections[k]
       }).join('\n\n')
       return inlineNorm + '\n\n' + extras
@@ -277,7 +277,7 @@ export function buildTeamsText(sections: Record<string, string>): string {
   )
 
   return sorted.map(k => {
-    const teamName = k.replace(/_/g, ' ').replace(/['']/g, "'").replace(/\b\w/g, c => c.toUpperCase()).replace(/:$/, '')
+    const teamName = k.replace(/_/g, ' ').replace(/['']/g, "'").replace(/\b\w/g, (c: string) => c.toUpperCase()).replace(/:$/, '')
     return `${teamName}\n\n${sections[k]}`
   }).join('\n\n')
 }
