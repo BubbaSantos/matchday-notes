@@ -267,23 +267,27 @@ export function MatchDay() {
       </button>
 
       {/* Edit panel — rendered above header card when in edit mode */}
-      {editMode && username && isPast && events && (
+      {editMode && username && isPast && (
         <MatchEditPanel
           home={match.venue === 'H' ? 'Celtic' : match.opponent}
           away={match.venue === 'H' ? match.opponent : 'Celtic'}
           homeScore={match.venue === 'H' ? (match.celticScore ?? null) : (match.opponentScore ?? null)}
           awayScore={match.venue === 'H' ? (match.opponentScore ?? null) : (match.celticScore ?? null)}
           tableNote={null}
-          initialEvents={ssIncidentsToOverride(events.incidents, events.homeTeamName)}
+          initialEvents={events ? ssIncidentsToOverride(events.incidents, events.homeTeamName) : []}
           initialCelticLineup={
-            match.venue === 'H'
-              ? ssLineupToOverride(events.homeLineup, events.homeTeamName, events.homeManager)
-              : ssLineupToOverride(events.awayLineup, events.awayTeamName, events.awayManager)
+            events
+              ? (match.venue === 'H'
+                  ? ssLineupToOverride(events.homeLineup, events.homeTeamName, events.homeManager)
+                  : ssLineupToOverride(events.awayLineup, events.awayTeamName, events.awayManager))
+              : { teamName: 'Celtic', players: [] }
           }
           initialOpponentLineup={
-            match.venue === 'H'
-              ? ssLineupToOverride(events.awayLineup, events.awayTeamName, events.awayManager)
-              : ssLineupToOverride(events.homeLineup, events.homeTeamName, events.homeManager)
+            events
+              ? (match.venue === 'H'
+                  ? ssLineupToOverride(events.awayLineup, events.awayTeamName, events.awayManager)
+                  : ssLineupToOverride(events.homeLineup, events.homeTeamName, events.homeManager))
+              : { teamName: match.opponent, players: [] }
           }
           override={override}
           onSave={saveOverride}
@@ -786,7 +790,7 @@ function MatchTabs({
         {tab === 'events' && (
           loadingEvents ? (
             <div className="rounded h-20 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
-          ) : events ? (
+          ) : (events && events.incidents.some(i => i.type === 'goal' || i.type === 'card')) ? (
             <MatchIncidents data={events} opponentName={match.opponent} />
           ) : wikiParsed?.events.length ? (
             <WikiEventsDisplay
