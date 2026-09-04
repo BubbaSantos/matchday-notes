@@ -106,14 +106,14 @@ export function WikiEventsDisplay({ events, celticName, opponentName, isAway = f
 }) {
   if (!events.length) return null
 
-  // Compute running score for goals — always Celtic–Opponent to match the header scoreline
+  // Compute running score for goals — always home team first to match the header
   let celticGoals = 0, oppGoals = 0
   const scoreAtGoal = new Map<HistoricalEvent, string>()
   for (const ev of events) {
     if (ev.type === 'goal' || ev.type === 'ownGoal') {
       if ((ev.type === 'goal' && ev.isCeltic) || (ev.type === 'ownGoal' && !ev.isCeltic)) celticGoals++
       else oppGoals++
-      scoreAtGoal.set(ev, `${celticGoals}–${oppGoals}`)
+      scoreAtGoal.set(ev, isAway ? `${oppGoals}–${celticGoals}` : `${celticGoals}–${oppGoals}`)
     }
   }
 
@@ -697,7 +697,7 @@ export function HistoricalMatch() {
             style={{ borderColor: 'var(--color-border)', backgroundColor: resultBg, marginInline: '-1.25rem', paddingInline: '1.25rem' }}
           >
             <div className="font-bold font-mono tabular-nums" style={{ color: resultColor, fontSize: '3rem', lineHeight: 1 }}>
-              {celticScore}–{oppScore}
+              {match.homeScore}–{match.awayScore}
             </div>
             {parsed.attendance && (
               <div style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem', marginTop: 4 }}>

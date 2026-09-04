@@ -46,9 +46,7 @@ function opponent(match: HistoricalMatch) {
 
 function scoreDisplay(match: HistoricalMatch) {
   if (match.homeScore == null || match.awayScore == null) return '–'
-  const cScore = match.home === 'Celtic' ? match.homeScore : match.awayScore
-  const oScore = match.home === 'Celtic' ? match.awayScore : match.homeScore
-  return `${cScore}–${oScore}`
+  return `${match.homeScore}–${match.awayScore}`
 }
 
 // ── Year grid ─────────────────────────────────────────────────────────────────
