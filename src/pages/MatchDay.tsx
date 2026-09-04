@@ -17,6 +17,7 @@ import { MatchIncidents, MatchStats } from '../components/MatchEvents'
 import { Lineups } from '../components/Lineups'
 import { VoiceRecorder } from '../components/VoiceRecorder'
 import { cleanReportText, parseTeamsSection, buildTeamsText } from '../lib/historicalData'
+import type { HistoricalLineup, HistoricalEvent } from '../lib/historicalData'
 import { WikiEventsDisplay, WikiLineupsDisplay } from './HistoricalMatch'
 import type { MatchEntry, SSMatchData, TableRow } from '../types'
 import type { ParsedMatch } from '../lib/historicalData'
@@ -158,6 +159,21 @@ function ssLineupToOverride(
       starter: p.starter,
       subbedOff: p.used && p.replacedByAt != null ? p.replacedByAt : null,
       subbedOn: !p.starter && p.used && p.subbedInAt != null ? p.subbedInAt : null,
+    })),
+  }
+}
+
+// Convert saved OverrideLineup back to HistoricalLineup for display
+function overrideToHistLineup(ol: OverrideLineup): HistoricalLineup {
+  return {
+    teamName: ol.teamName,
+    ...(ol.manager ? { manager: ol.manager } : {}),
+    subsNotUsed: [],
+    players: ol.players.map(p => ({
+      name: p.name,
+      starter: p.starter,
+      ...(p.subbedOff != null ? { subbedOff: p.subbedOff } : {}),
+      ...(p.subbedOn != null ? { subbedOn: p.subbedOn } : {}),
     })),
   }
 }
@@ -399,9 +415,15 @@ export function MatchDay() {
         events={events}
         loadingEvents={loadingEvents}
         isPast={isPast}
+        isCelticHome={match.venue === 'H'}
         notes={notes}
         wikiMatch={wikiMatch}
         wikiParsed={wikiParsed}
+        overrideEvents={override.events !== undefined && override.events !== null
+          ? override.events.map(e => ({ type: e.type, player: e.player, minute: e.minute, isCeltic: e.isCeltic })) as HistoricalEvent[]
+          : null}
+        overrideCelticLineup={override.celticLineup ? overrideToHistLineup(override.celticLineup) : null}
+        overrideOppLineup={override.opponentLineup ? overrideToHistLineup(override.opponentLineup) : null}
       />
     </div>
   )
@@ -733,16 +755,25 @@ function MatchTabs({
   notes,
   wikiMatch,
   wikiParsed,
+  isCelticHome,
+  overrideEvents,
+  overrideCelticLineup,
+  overrideOppLineup,
 }: {
   match: MatchEntry
   events: SSMatchData | null
   loadingEvents: boolean
   isPast: boolean
+  isCelticHome: boolean
   notes: MatchNotes
   wikiMatch: WikiMatchData | null
   wikiParsed: ParsedMatch | null
+  overrideEvents: HistoricalEvent[] | null
+  overrideCelticLineup: HistoricalLineup | null
+  overrideOppLineup: HistoricalLineup | null
 }) {
   const hasLineups = !!events && (events.homeLineup.players.length > 0 || events.awayLineup.players.length > 0)
+  const hasOverrideLineup = !!(overrideCelticLineup || overrideOppLineup)
 
   const [tab, setTab] = useState<MatchTab>(isPast ? 'events' : 'notes')
 
@@ -790,6 +821,13 @@ function MatchTabs({
         {tab === 'events' && (
           loadingEvents ? (
             <div className="rounded h-20 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+          ) : overrideEvents ? (
+            <WikiEventsDisplay
+              events={overrideEvents}
+              celticName="Celtic"
+              opponentName={match.opponent}
+              isAway={!isCelticHome}
+            />
           ) : (events && events.incidents.some(i => i.type === 'goal' || i.type === 'card')) ? (
             <MatchIncidents data={events} opponentName={match.opponent} />
           ) : wikiParsed?.events.length ? (
@@ -797,6 +835,7 @@ function MatchTabs({
               events={wikiParsed.events}
               celticName="Celtic"
               opponentName={match.opponent}
+              isAway={!isCelticHome}
             />
           ) : (
             <EmptyTabMessage isPast={isPast} thing="events" />
@@ -816,8 +855,10 @@ function MatchTabs({
         {tab === 'lineups' && (
           loadingEvents ? (
             <div className="rounded h-40 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+          ) : hasOverrideLineup ? (
+            <WikiLineupsDisplay celtic={overrideCelticLineup} opponent={overrideOppLineup} />
           ) : hasLineups ? (
-            <Lineups data={events!} />
+            <Lineups data={events!} isCelticHome={isCelticHome} />
           ) : wikiParsed && (wikiParsed.celticLineup || wikiParsed.opponentLineup) ? (
             <WikiLineupsDisplay celtic={wikiParsed.celticLineup} opponent={wikiParsed.opponentLineup} />
           ) : (

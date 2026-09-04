@@ -336,8 +336,10 @@ function LineupPlayerList({
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function Lineups({ data }: { data: SSMatchData }) {
-  const isCelticHome = data.homeTeamName === 'Celtic'
+// isCelticHome can be passed in from the caller when team name data is
+// unreliable (e.g. event endpoint failed and homeTeamName defaulted to 'Home')
+export function Lineups({ data, isCelticHome: isCelticHomeProp }: { data: SSMatchData; isCelticHome?: boolean }) {
+  const isCelticHome = isCelticHomeProp ?? data.homeTeamName === 'Celtic'
   const celticLineup = isCelticHome ? data.homeLineup : data.awayLineup
   const oppLineup = isCelticHome ? data.awayLineup : data.homeLineup
   const oppName = isCelticHome ? data.awayTeamName : data.homeTeamName
