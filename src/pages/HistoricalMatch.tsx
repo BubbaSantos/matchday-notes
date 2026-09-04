@@ -106,15 +106,14 @@ export function WikiEventsDisplay({ events, celticName, opponentName, isAway = f
 }) {
   if (!events.length) return null
 
-  // Compute running score for goals — always in home–away order
+  // Compute running score for goals — always Celtic–Opponent to match the header scoreline
   let celticGoals = 0, oppGoals = 0
   const scoreAtGoal = new Map<HistoricalEvent, string>()
   for (const ev of events) {
     if (ev.type === 'goal' || ev.type === 'ownGoal') {
       if ((ev.type === 'goal' && ev.isCeltic) || (ev.type === 'ownGoal' && !ev.isCeltic)) celticGoals++
       else oppGoals++
-      // Score displayed as home–away: for home matches Celtic is home; for away matches opp is home
-      scoreAtGoal.set(ev, isAway ? `${oppGoals}–${celticGoals}` : `${celticGoals}–${oppGoals}`)
+      scoreAtGoal.set(ev, `${celticGoals}–${oppGoals}`)
     }
   }
 
