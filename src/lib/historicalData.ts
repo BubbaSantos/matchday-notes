@@ -99,7 +99,7 @@ export function normaliseCompetition(raw: string): Competition {
 
 function parseMinute(raw: string): number | null {
   // Handle stoppage-time notation: "90+4", "90'-4", "90'-4" → 94
-  const stoppage = raw.match(/(\d+)[+'’\-]+(\d+)/)
+  const stoppage = raw.match(/(\d+)[+''\-]+(\d+)/)
   if (stoppage) return parseInt(stoppage[1]) + parseInt(stoppage[2])
   const n = parseInt(raw.replace(/[^0-9]/g, ''))
   return isNaN(n) ? null : n
@@ -277,7 +277,7 @@ export function buildTeamsText(sections: Record<string, string>): string {
   )
 
   return sorted.map(k => {
-    const teamName = k.replace(/_/g, ‘ ‘).replace(/[‘’]/g, "’").replace(/\b\w/g, c => c.toUpperCase()).replace(/:$/, ‘’)
+    const teamName = k.replace(/_/g, ' ').replace(/['']/g, "'").replace(/\b\w/g, c => c.toUpperCase()).replace(/:$/, '')
     return `${teamName}\n\n${sections[k]}`
   }).join('\n\n')
 }
