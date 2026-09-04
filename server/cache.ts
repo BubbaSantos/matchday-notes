@@ -32,11 +32,16 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
   }
 }
 
-export async function cacheSet(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+// ttlSeconds is optional — omit (or pass undefined) to store permanently
+export async function cacheSet(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
   const redis = getClient()
   if (!redis) return
   try {
-    await redis.set(key, value, { ex: ttlSeconds })
+    if (ttlSeconds != null) {
+      await redis.set(key, value, { ex: ttlSeconds })
+    } else {
+      await redis.set(key, value)
+    }
   } catch {
     // best-effort — a failed cache write shouldn't break the request
   }

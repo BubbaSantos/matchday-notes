@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { ArrowLeft, Star } from 'lucide-react'
+import { ArrowLeft, Star, Pencil } from 'lucide-react'
 import { useMatchNotes } from '../hooks/useMatchNotes'
 import { useFavourites } from '../hooks/useFavourites'
+import { useAuth } from '../hooks/useAuth'
 import { VoiceRecorder } from '../components/VoiceRecorder'
 import { parseTeamsSection, buildTeamsText, cleanReportText } from '../lib/historicalData'
 import type { HistoricalLineup, HistoricalEvent, HistoricalPlayer } from '../lib/historicalData'
 import type { MatchNotes } from '../hooks/useMatchNotes'
+import { MatchEditPanel } from '../components/MatchEditPanel'
+import type { OverrideEvent, OverrideLineup, MatchOverride } from '../components/MatchEditPanel'
 
 interface HistoricalMatch {
   year: number
@@ -410,10 +413,15 @@ function LineupsTab({ celtic, opponent }: { celtic: HistoricalLineup | null; opp
       {/* Team headers */}
       <div className="grid grid-cols-2 gap-4">
         {[celtic, opponent].map((lu, i) => (
-          <div key={i} className="flex items-center justify-between pb-1 mb-1" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+          <div key={i} className="pb-1 mb-1" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
             <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: i === 0 ? 'var(--color-accent)' : 'var(--color-ink-muted)', fontWeight: 600 }}>
               {lu?.teamName ?? ''}
             </span>
+            {lu?.manager && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--color-ink-faint)', marginTop: 2 }}>
+                Mgr: {lu.manager}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -617,6 +625,31 @@ function MatchTabs({ match, parsed, notes }: {
   )
 }
 
+// ── Edit helpers (used when passing initial data to shared MatchEditPanel) ────
+
+function lineupToOverride(lineup: HistoricalLineup | null, teamName: string): OverrideLineup {
+  if (!lineup) return { teamName, players: [] }
+  return {
+    teamName: lineup.teamName || teamName,
+    manager: lineup.manager ?? null,
+    players: lineup.players.map(p => ({
+      name: p.name,
+      starter: p.starter,
+      subbedOff: p.subbedOff ?? null,
+      subbedOn: p.subbedOn ?? null,
+    })),
+  }
+}
+
+function eventsToOverride(events: HistoricalEvent[]): OverrideEvent[] {
+  return events.map(ev => ({
+    type: ev.type,
+    player: ev.player,
+    minute: ev.minute,
+    isCeltic: ev.isCeltic,
+  }))
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function HistoricalMatch() {
@@ -625,6 +658,9 @@ export function HistoricalMatch() {
   const [match, setMatch] = useState<HistoricalMatch | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [override, setOverride] = useState<MatchOverride>({})
+  const { username } = useAuth()
 
   useEffect(() => {
     if (!slug) return
@@ -642,9 +678,58 @@ export function HistoricalMatch() {
         if (!found) throw new Error('Match not found')
         setMatch(found)
         setLoading(false)
+        // Fetch any saved override
+        fetch(`/api/notes?kind=edit&slug=${encodeURIComponent(found.slug)}`)
+          .then(r => r.ok ? r.json() : {})
+          .then((data: MatchOverride) => {
+            if (data?.deleted) {
+              navigate(`/history/${found.year}`, { replace: true })
+            } else {
+              setOverride(data ?? {})
+            }
+          })
+          .catch(() => {})
       })
       .catch(err => { setError(err.message); setLoading(false) })
   }, [slug])
+
+  async function saveOverride(o: MatchOverride) {
+    if (!match) return
+    const res = await fetch('/api/notes?kind=edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ slug: match.slug, ...o }),
+    })
+    if (!res.ok) throw new Error('Save failed')
+    setOverride(o)
+    setEditMode(false)
+  }
+
+  async function resetOverride() {
+    if (!match) return
+    const res = await fetch('/api/notes?kind=edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ slug: match.slug }),
+    })
+    if (!res.ok) throw new Error('Reset failed')
+    setOverride({})
+    setEditMode(false)
+  }
+
+  async function deleteMatch() {
+    if (!match) return
+    const res = await fetch('/api/notes?kind=edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ slug: match.slug, deleted: true }),
+    })
+    if (!res.ok) throw new Error('Delete failed')
+    navigate(`/history/${match.year}`, { replace: true })
+  }
 
   const notesKey = slug ? `hist:${decodeURIComponent(slug).replace(/\//g, '')}` : undefined
   const notes = useMatchNotes(notesKey)
@@ -670,12 +755,40 @@ export function HistoricalMatch() {
   }
 
   const parsed = parseTeamsSection(buildTeamsText(match.report?.sections ?? {}))
-  const { color: resultColor, bg: resultBg, label: resultLabel } = resultColors(match)
-  const opp = opponent(match)
-  const venue = match.home === 'Celtic' ? 'H' : 'A'
-  const celticScore = match.home === 'Celtic' ? match.homeScore : match.awayScore
-  const oppScore   = match.home === 'Celtic' ? match.awayScore  : match.homeScore
-  const outcome = parseMatchOutcome(match.tableNote, match)
+
+  // Apply overrides
+  const effectiveMatch: HistoricalMatch = {
+    ...match,
+    homeScore: override.homeScore !== undefined ? override.homeScore : match.homeScore,
+    awayScore: override.awayScore !== undefined ? override.awayScore : match.awayScore,
+    tableNote: override.tableNote !== undefined ? override.tableNote : match.tableNote,
+  }
+  const effectiveEvents: HistoricalEvent[] = override.events !== undefined && override.events !== null
+    ? override.events : parsed.events
+  function overrideToLineup(ol: OverrideLineup): HistoricalLineup {
+    return {
+      teamName: ol.teamName,
+      ...(ol.manager ? { manager: ol.manager } : {}),
+      subsNotUsed: [],
+      players: ol.players.map(p => ({
+        name: p.name,
+        starter: p.starter,
+        ...(p.subbedOff != null ? { subbedOff: p.subbedOff } : {}),
+        ...(p.subbedOn  != null ? { subbedOn:  p.subbedOn  } : {}),
+      })),
+    }
+  }
+  const effectiveCelticLineup: HistoricalLineup | null = override.celticLineup
+    ? overrideToLineup(override.celticLineup) : parsed.celticLineup
+  const effectiveOppLineup: HistoricalLineup | null = override.opponentLineup
+    ? overrideToLineup(override.opponentLineup) : parsed.opponentLineup
+
+  const { color: resultColor, bg: resultBg, label: resultLabel } = resultColors(effectiveMatch)
+  const opp = opponent(effectiveMatch)
+  const venue = effectiveMatch.home === 'Celtic' ? 'H' : 'A'
+  const celticScore = effectiveMatch.home === 'Celtic' ? effectiveMatch.homeScore : effectiveMatch.awayScore
+  const oppScore   = effectiveMatch.home === 'Celtic' ? effectiveMatch.awayScore  : effectiveMatch.homeScore
+  const outcome = parseMatchOutcome(effectiveMatch.tableNote, effectiveMatch)
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
@@ -688,6 +801,24 @@ export function HistoricalMatch() {
         Back
       </button>
 
+      {editMode && username && (
+        <MatchEditPanel
+          home={match.home}
+          away={match.away}
+          homeScore={match.homeScore}
+          awayScore={match.awayScore}
+          tableNote={match.tableNote}
+          initialEvents={eventsToOverride(parsed.events)}
+          initialCelticLineup={lineupToOverride(parsed.celticLineup, 'Celtic')}
+          initialOpponentLineup={lineupToOverride(parsed.opponentLineup, match.home === 'Celtic' ? match.away : match.home)}
+          override={override}
+          onSave={saveOverride}
+          onReset={resetOverride}
+          onDelete={deleteMatch}
+          onCancel={() => setEditMode(false)}
+        />
+      )}
+
       <div className="rounded-xl border p-5 mb-1" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
         <div className="flex items-center gap-2 mb-3">
           <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, color: 'var(--color-ink-muted)', background: 'var(--color-border-subtle)', padding: '2px 8px', borderRadius: 4 }}>
@@ -697,14 +828,24 @@ export function HistoricalMatch() {
             <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>
               {venue === 'H' ? 'Celtic Park' : 'Away'}
             </span>
+            {username && (
+              <button
+                onClick={() => setEditMode(m => !m)}
+                className="border-none cursor-pointer p-0 flex items-center"
+                style={{ background: 'none', color: editMode ? 'var(--color-accent)' : 'var(--color-ink-faint)', lineHeight: 1 }}
+                aria-label="Edit match"
+              >
+                <Pencil size={14} strokeWidth={1.5} />
+              </button>
+            )}
             <button
               onClick={() => toggleFav({
                 id: `hist:${match.slug}`,
                 date: match.date,
                 home: match.home,
                 away: match.away,
-                homeScore: match.homeScore,
-                awayScore: match.awayScore,
+                homeScore: effectiveMatch.homeScore,
+                awayScore: effectiveMatch.awayScore,
                 competition: match.competition,
                 path: `/history/match/${encodeURIComponent(match.slug)}`,
               })}
@@ -737,7 +878,7 @@ export function HistoricalMatch() {
             style={{ borderColor: 'var(--color-border)', backgroundColor: resultBg, marginInline: '-1.25rem', paddingInline: '1.25rem' }}
           >
             <div className="font-bold font-mono tabular-nums" style={{ color: resultColor, fontSize: '3rem', lineHeight: 1 }}>
-              {match.homeScore}–{match.awayScore}
+              {effectiveMatch.homeScore}–{effectiveMatch.awayScore}
             </div>
             {outcome.penalties && outcome.penScore && (
               <div className="font-mono font-bold tabular-nums" style={{ color: 'var(--color-ink-muted)', fontSize: '1rem', marginTop: 4 }}>
@@ -765,7 +906,7 @@ export function HistoricalMatch() {
         )}
       </div>
 
-      <MatchTabs match={match} parsed={parsed} notes={notes} />
+      <MatchTabs match={effectiveMatch} parsed={{ ...parsed, events: effectiveEvents, celticLineup: effectiveCelticLineup, opponentLineup: effectiveOppLineup }} notes={notes} />
     </div>
   )
 }

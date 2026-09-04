@@ -1,10 +1,13 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ArrowLeft, MapPin, ChevronDown, Star } from 'lucide-react'
+import { ArrowLeft, MapPin, ChevronDown, Star, Pencil } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { useMatchNotes, type MatchNotes } from '../hooks/useMatchNotes'
 import { useFavourites } from '../hooks/useFavourites'
+import { useAuth } from '../hooks/useAuth'
+import { MatchEditPanel } from '../components/MatchEditPanel'
+import type { OverrideEvent, OverrideLineup, MatchOverride } from '../components/MatchEditPanel'
 import { fetchLeagueTable } from '../lib/table'
 import { fetchMatchEvents } from '../lib/matchEvents'
 import { stableMatchKey } from '../lib/matchKey'
@@ -124,6 +127,41 @@ function useMatchTables(match: MatchEntry | undefined) {
   return { tables, loadingTables: loading, phase, setPhase, isPremiership }
 }
 
+// Convert SSData incidents → OverrideEvent[] for the edit panel's initial state
+function ssIncidentsToOverride(
+  incidents: SSMatchData['incidents'],
+  homeTeamName: string,
+): OverrideEvent[] {
+  return incidents
+    .filter(i => i.type === 'goal' || i.type === 'card')
+    .map(i => ({
+      type: i.type === 'goal'
+        ? (i.scoringType === 'own' ? 'ownGoal' as const : 'goal' as const)
+        : i.incidentClass === 'yellowCard' ? 'yellowCard' as const : 'redCard' as const,
+      player: i.player ?? '',
+      minute: i.minute + (i.addedTime ?? 0),
+      isCeltic: homeTeamName === 'Celtic' ? i.isHome : !i.isHome,
+    }))
+}
+
+// Convert SSData lineup → OverrideLineup for the edit panel's initial state
+function ssLineupToOverride(
+  lineup: SSMatchData['homeLineup'] | SSMatchData['awayLineup'],
+  teamName: string,
+  manager?: string,
+): OverrideLineup {
+  return {
+    teamName,
+    manager: manager ?? null,
+    players: lineup.players.map(p => ({
+      name: p.shortName || p.name,
+      starter: p.starter,
+      subbedOff: p.used && p.replacedByAt != null ? p.replacedByAt : null,
+      subbedOn: !p.starter && p.used && p.subbedInAt != null ? p.subbedInAt : null,
+    })),
+  }
+}
+
 export function MatchDay() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -134,6 +172,59 @@ export function MatchDay() {
   const notes = useMatchNotes(match ? stableMatchKey(match) : undefined)
   const { wikiMatch, wikiParsed } = useWikiMatch(match)
   const { isFavourited, toggle: toggleFav } = useFavourites()
+  const { username } = useAuth()
+  const [editMode, setEditMode] = useState(false)
+  const [override, setOverride] = useState<MatchOverride>({})
+
+  // Slug used to store overrides for this SS match
+  const overrideSlug = match ? `ss:${match.kickoff.slice(0, 10)}` : undefined
+
+  // Load any existing override when the match loads
+  useEffect(() => {
+    if (!overrideSlug) return
+    fetch(`/api/notes?kind=edit&slug=${encodeURIComponent(overrideSlug)}`)
+      .then(r => r.ok ? r.json() : {})
+      .then((data: MatchOverride) => setOverride(data ?? {}))
+      .catch(() => {})
+  }, [overrideSlug])
+
+  async function saveOverride(o: MatchOverride) {
+    if (!overrideSlug) return
+    const res = await fetch('/api/notes?kind=edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ slug: overrideSlug, ...o }),
+    })
+    if (!res.ok) throw new Error('Save failed')
+    setOverride(o)
+    setEditMode(false)
+  }
+
+  async function resetOverride() {
+    if (!overrideSlug) return
+    const res = await fetch('/api/notes?kind=edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ slug: overrideSlug }),
+    })
+    if (!res.ok) throw new Error('Reset failed')
+    setOverride({})
+    setEditMode(false)
+  }
+
+  async function deleteMatch() {
+    if (!overrideSlug) return
+    const res = await fetch('/api/notes?kind=edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ slug: overrideSlug, deleted: true }),
+    })
+    if (!res.ok) throw new Error('Delete failed')
+    navigate('/', { replace: true })
+  }
 
   if (!match && fixtures.length > 0) {
     return (
@@ -175,6 +266,33 @@ export function MatchDay() {
         Back
       </button>
 
+      {/* Edit panel — rendered above header card when in edit mode */}
+      {editMode && username && isPast && events && (
+        <MatchEditPanel
+          home={match.venue === 'H' ? 'Celtic' : match.opponent}
+          away={match.venue === 'H' ? match.opponent : 'Celtic'}
+          homeScore={match.venue === 'H' ? (match.celticScore ?? null) : (match.opponentScore ?? null)}
+          awayScore={match.venue === 'H' ? (match.opponentScore ?? null) : (match.celticScore ?? null)}
+          tableNote={null}
+          initialEvents={ssIncidentsToOverride(events.incidents, events.homeTeamName)}
+          initialCelticLineup={
+            match.venue === 'H'
+              ? ssLineupToOverride(events.homeLineup, events.homeTeamName, events.homeManager)
+              : ssLineupToOverride(events.awayLineup, events.awayTeamName, events.awayManager)
+          }
+          initialOpponentLineup={
+            match.venue === 'H'
+              ? ssLineupToOverride(events.awayLineup, events.awayTeamName, events.awayManager)
+              : ssLineupToOverride(events.homeLineup, events.homeTeamName, events.homeManager)
+          }
+          override={override}
+          onSave={saveOverride}
+          onReset={resetOverride}
+          onDelete={deleteMatch}
+          onCancel={() => setEditMode(false)}
+        />
+      )}
+
       {/* Header card */}
       <div
         className="rounded-xl border p-5 mb-1"
@@ -195,6 +313,16 @@ export function MatchDay() {
               <MapPin size={10} />
               {venueLabel}
             </span>
+            {username && isPast && (
+              <button
+                onClick={() => setEditMode(m => !m)}
+                className="border-none cursor-pointer p-0 flex items-center"
+                style={{ background: 'none', color: editMode ? 'var(--color-accent)' : 'var(--color-ink-faint)', lineHeight: 1 }}
+                aria-label="Edit match"
+              >
+                <Pencil size={14} strokeWidth={1.5} />
+              </button>
+            )}
             <button
               onClick={() => toggleFav({
                 id: `ss:${match.id}`,

@@ -128,7 +128,7 @@ function mapSSComp(tournamentName: string): string | null {
 const ssDateMap = new Map<string, number>()
 let ssPageCacheExpiry = 0
 let historicalFixturesCache: SSFixture[] = []
-const SS_PAGES = 15
+const SS_PAGES = 80
 const SS_PAGE_BATCH_SIZE = 5 // fetch pages concurrently in batches — this loop used to run one
                               // page at a time through ScraperAPI, which alone was the biggest
                               // contributor to slow cold-start loads (up to 16 sequential round
@@ -136,8 +136,8 @@ const SS_PAGE_BATCH_SIZE = 5 // fetch pages concurrently in batches — this loo
 
 type SSEventPage = { events?: Record<string, unknown>[] } | null
 
-const SS_INDEX_CACHE_KEY = 'ss:index:v1'
-const SS_INDEX_TTL_SECONDS = 6 * 60 * 60
+const SS_INDEX_CACHE_KEY = 'ss:index:v2'
+const SS_INDEX_TTL_SECONDS = 7 * 24 * 60 * 60
 
 async function ensureSofascorePages(): Promise<void> {
   if (Date.now() < ssPageCacheExpiry) return
@@ -418,11 +418,11 @@ export async function fetchSofascoreData(date: string): Promise<SSData | null> {
     confirmed,
   }
 
-  // A finished match's data never changes — cache it for a long time. A
-  // date of today might still be pre-kickoff or live (lineup polling,
-  // in-progress incidents), so keep that short.
+  // A finished match's data never changes — store it permanently so we
+  // never hit Sofascore again for the same past game. Today's match might
+  // still be live or pre-kickoff, so keep that short.
   const today = new Date().toLocaleDateString('en-CA')
-  await cacheSet(cacheKey, result, date < today ? 30 * 24 * 60 * 60 : 60)
+  await cacheSet(cacheKey, result, date < today ? undefined : 60)
 
   return result
 }
