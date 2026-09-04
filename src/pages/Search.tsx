@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search as SearchIcon, Sparkles, Loader2, Clock, X, ChevronRight } from 'lucide-react'
+import { Search as SearchIcon, Sparkles, Loader2, Clock, X, ChevronRight, Star } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { CompetitionBadge } from '../components/CompetitionBadge'
+import { useFavourites, type FavouriteEntry } from '../hooks/useFavourites'
 import type { MatchEntry, Competition } from '../types'
 import type { PlayerStats } from '../../server/aiSearch'
 
@@ -92,6 +93,47 @@ function HistoricalMatchCard({ entry }: { entry: HistoricalSearchEntry }) {
             Match report available
           </div>
         )}
+      </div>
+    </Link>
+  )
+}
+
+// ── Favourite card ───────────────────────────────────────────────────────────
+
+function FavouriteCard({ entry }: { entry: FavouriteEntry }) {
+  const isCelticHome = entry.home === 'Celtic'
+  const opp = isCelticHome ? entry.away : entry.home
+  const celticScore = isCelticHome ? entry.homeScore : entry.awayScore
+  const oppScore = isCelticHome ? entry.awayScore : entry.homeScore
+  const win = celticScore !== null && oppScore !== null && celticScore > oppScore
+  const draw = celticScore !== null && oppScore !== null && celticScore === oppScore
+  const color = celticScore === null ? 'var(--color-ink-muted)' : win ? 'var(--color-win)' : draw ? 'var(--color-draw)' : 'var(--color-loss)'
+  const dateLabel = entry.date
+    ? new Date(entry.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—'
+
+  return (
+    <Link to={entry.path} className="block no-underline mb-3">
+      <div
+        className="rounded-lg border p-4 transition-colors"
+        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-ink-muted)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)' }}
+      >
+        <div className="flex items-center gap-2 mb-1.5">
+          <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{entry.competition}</span>
+          <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem', marginLeft: 'auto' }}>{dateLabel}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-journal" style={{ color: 'var(--color-ink)', fontSize: '0.975rem' }}>
+            {isCelticHome ? <>Celtic vs {opp}</> : <>{opp} vs Celtic</>}
+          </div>
+          {entry.homeScore !== null && entry.awayScore !== null && (
+            <span className="text-base font-bold font-mono tabular-nums flex-shrink-0" style={{ color }}>
+              {entry.homeScore}–{entry.awayScore}
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   )
@@ -256,6 +298,7 @@ export function Search() {
   const { fixtures } = useFixtures()
   const fixtureMap = new Map(fixtures.map((f) => [f.id, f]))
   const [histIndex, setHistIndex] = useState<HistoricalSearchEntry[]>([])
+  const { favourites } = useFavourites()
 
   useEffect(() => {
     fetch('/history/search-index.json')
@@ -525,15 +568,28 @@ export function Search() {
         </>
       )}
 
-      {/* Empty state */}
+      {/* Empty state / favourites */}
       {!query && !aiLoading && !aiResponse && (
-        <div className="text-center py-16" style={{ color: 'var(--color-ink-faint)' }}>
-          <Sparkles size={28} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm m-0 mb-1">Type to filter, or ask the AI anything</p>
-          <p className="text-xs m-0" style={{ opacity: 0.7 }}>
-            "Rangers" · "Hatate goals" · "Highest scoring games" · "Away wins"
-          </p>
-        </div>
+        <>
+          {favourites.length > 0 && (
+            <div>
+              <p className="mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>
+                <Star size={11} fill="currentColor" strokeWidth={1.5} />
+                Starred ({favourites.length})
+              </p>
+              {favourites.map(fav => <FavouriteCard key={fav.id} entry={fav} />)}
+            </div>
+          )}
+          {favourites.length === 0 && (
+            <div className="text-center py-16" style={{ color: 'var(--color-ink-faint)' }}>
+              <Sparkles size={28} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm m-0 mb-1">Type to filter, or ask the AI anything</p>
+              <p className="text-xs m-0" style={{ opacity: 0.7 }}>
+                "Rangers" · "Hatate goals" · "Highest scoring games" · "Away wins"
+              </p>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

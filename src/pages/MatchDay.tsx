@@ -1,9 +1,10 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ArrowLeft, MapPin, ChevronDown } from 'lucide-react'
+import { ArrowLeft, MapPin, ChevronDown, Star } from 'lucide-react'
 import { useFixtures } from '../hooks/useFixtures'
 import { useMatchNotes, type MatchNotes } from '../hooks/useMatchNotes'
+import { useFavourites } from '../hooks/useFavourites'
 import { fetchLeagueTable } from '../lib/table'
 import { fetchMatchEvents } from '../lib/matchEvents'
 import { stableMatchKey } from '../lib/matchKey'
@@ -12,7 +13,7 @@ import { LeagueTable } from '../components/LeagueTable'
 import { MatchIncidents, MatchStats } from '../components/MatchEvents'
 import { Lineups } from '../components/Lineups'
 import { VoiceRecorder } from '../components/VoiceRecorder'
-import { cleanReportText, parseTeamsSection } from '../lib/historicalData'
+import { cleanReportText, parseTeamsSection, buildTeamsText } from '../lib/historicalData'
 import { WikiEventsDisplay, WikiLineupsDisplay } from './HistoricalMatch'
 import type { MatchEntry, SSMatchData, TableRow } from '../types'
 import type { ParsedMatch } from '../lib/historicalData'
@@ -132,6 +133,7 @@ export function MatchDay() {
   const { tables, loadingTables, phase, setPhase, isPremiership } = useMatchTables(match)
   const notes = useMatchNotes(match ? stableMatchKey(match) : undefined)
   const { wikiMatch, wikiParsed } = useWikiMatch(match)
+  const { isFavourited, toggle: toggleFav } = useFavourites()
 
   if (!match && fixtures.length > 0) {
     return (
@@ -185,13 +187,32 @@ export function MatchDay() {
               {match.round}
             </span>
           )}
-          <span
-            className="flex items-center gap-1 ml-auto"
-            style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}
-          >
-            <MapPin size={10} />
-            {venueLabel}
-          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <span
+              className="flex items-center gap-1"
+              style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}
+            >
+              <MapPin size={10} />
+              {venueLabel}
+            </span>
+            <button
+              onClick={() => toggleFav({
+                id: `ss:${match.id}`,
+                date: match.kickoff.slice(0, 10),
+                home: match.venue === 'A' ? match.opponent : 'Celtic',
+                away: match.venue === 'A' ? 'Celtic' : match.opponent,
+                homeScore: match.venue === 'A' ? (match.opponentScore ?? null) : (match.celticScore ?? null),
+                awayScore: match.venue === 'A' ? (match.celticScore ?? null) : (match.opponentScore ?? null),
+                competition: match.competition,
+                path: `/match/${match.id}`,
+              })}
+              className="border-none cursor-pointer p-0 flex items-center"
+              style={{ background: 'none', color: isFavourited(`ss:${match.id}`) ? 'var(--color-draw)' : 'var(--color-ink-faint)', lineHeight: 1 }}
+              aria-label={isFavourited(`ss:${match.id}`) ? 'Remove from starred' : 'Add to starred'}
+            >
+              <Star size={14} fill={isFavourited(`ss:${match.id}`) ? 'currentColor' : 'none'} strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
         <h1 className="font-journal m-0 leading-tight" style={{ color: 'var(--color-ink)', fontSize: '1.5rem' }}>
           {match.venue === 'A' ? (
@@ -508,24 +529,36 @@ function useWikiMatch(match: MatchEntry | undefined): WikiMatchResult {
       .catch(() => {})
   }, [match?.id, match?.kickoff, match?.phase])
 
-  const wikiParsed = wikiMatch?.report?.sections?.teams
-    ? parseTeamsSection(wikiMatch.report.sections.teams)
+  const wikiParsed = wikiMatch?.report?.sections
+    ? parseTeamsSection(buildTeamsText(wikiMatch.report.sections))
     : null
 
   return { wikiMatch, wikiParsed }
 }
 
-const WIKI_SKIP_KEYS = new Set(['teams', 'lineups', 'lineup', 'squads', 'squad', 'stats', 'statistics', 'pictures', 'scorers'])
+const WIKI_SKIP_KEYS = new Set([
+  'teams', 'lineups', 'lineup', 'squads', 'squad', 'stats', 'statistics',
+  'pictures', 'scorers', 'forum', 'motm', 'man_of_the_match',
+])
+
+function isScoreKey(key: string) {
+  return /\d/.test(key)
+}
 
 function WikiReportTab({ report }: { report: NonNullable<WikiMatchData['report']> }) {
   const { sections } = report
   const orderedKeys = ['trivia', 'review']
-  const otherKeys = Object.keys(sections).filter(k => !orderedKeys.includes(k) && !WIKI_SKIP_KEYS.has(k))
+  const otherKeys = Object.keys(sections).filter(k =>
+    !orderedKeys.includes(k) && !WIKI_SKIP_KEYS.has(k) && k !== 'articles' && !isScoreKey(k)
+  )
   const allKeys = [...orderedKeys.filter(k => sections[k]), ...otherKeys.filter(k => sections[k])]
+  const hasArticles = !!(sections.articles && sections.articles.trim().length > 30)
 
-  if (!allKeys.length) {
+  if (!allKeys.length && !hasArticles) {
     return <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.85rem' }}>No report text available.</p>
   }
+
+  const stubRe = /^(match report|audio report|video|watch|listen|read more|see end of page|paradise report)/i
 
   return (
     <div className="space-y-5" style={{ fontSize: '0.875rem', color: 'var(--color-ink-secondary)', lineHeight: 1.75, overflowWrap: 'break-word', wordBreak: 'break-word', minWidth: 0 }}>
@@ -535,7 +568,7 @@ function WikiReportTab({ report }: { report: NonNullable<WikiMatchData['report']
         return (
           <div key={key}>
             <div style={{ fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', marginBottom: 6 }}>
-              {key.charAt(0).toUpperCase() + key.slice(1)}
+              {key === 'review' ? 'Match Report' : key === 'trivia' ? 'Trivia' : key.charAt(0).toUpperCase() + key.slice(1)}
             </div>
             <div className="report-prose">
               <ReactMarkdown>{cleaned}</ReactMarkdown>
@@ -543,6 +576,17 @@ function WikiReportTab({ report }: { report: NonNullable<WikiMatchData['report']
           </div>
         )
       })}
+      {hasArticles && (() => {
+        const lines = cleanReportText(sections.articles).split('\n').filter(l => !stubRe.test(l.trim()))
+        const body = lines.join('\n').trim()
+        if (!body) return null
+        return (
+          <div>
+            <div style={{ fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', marginBottom: 6 }}>Press</div>
+            <div className="report-prose"><ReactMarkdown>{body}</ReactMarkdown></div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
