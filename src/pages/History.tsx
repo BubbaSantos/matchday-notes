@@ -46,7 +46,13 @@ function opponent(match: HistoricalMatch) {
 
 function scoreDisplay(match: HistoricalMatch) {
   if (match.homeScore == null || match.awayScore == null) return '–'
-  return `${match.homeScore}–${match.awayScore}`
+  const base = `${match.homeScore}–${match.awayScore}`
+  const note = match.tableNote ?? ''
+  const hasPens = /pen(?:alties|alty|s|\.)?|shoot[-\s]?out|kicks/i.test(note)
+  const hasAet  = /(?:after\s+ET|AET|after\s+extra\s+time|@\s*120)/i.test(note)
+  if (hasPens) return `${base} (pens)`
+  if (hasAet)  return `${base} (aet)`
+  return base
 }
 
 // ── Year grid ─────────────────────────────────────────────────────────────────

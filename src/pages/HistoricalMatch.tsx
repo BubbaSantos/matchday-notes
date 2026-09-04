@@ -25,6 +25,45 @@ interface HistoricalMatch {
   pictures: string[]
 }
 
+interface MatchOutcome {
+  aet: boolean
+  penalties: boolean
+  penScore: string | null   // "4-5" home-away
+  penWinner: string | null  // display name of winner, e.g. "Rangers"
+}
+
+function parseMatchOutcome(tableNote: string | null, match: HistoricalMatch): MatchOutcome {
+  if (!tableNote) return { aet: false, penalties: false, penScore: null, penWinner: null }
+  const note = tableNote
+  const aet = /(?:after\s+ET|AET|\bAET\b|after\s+extra\s+time|@\s*120)/i.test(note)
+  const penalties = /pen(?:alties|alty|s|\.)?|shoot[-\s]?out|kicks/i.test(note)
+
+  // Extract pen score: "4-5 penalties", "5-4 on pens", "4-2 on penalties", "5-4" before pens keyword
+  let penScore: string | null = null
+  const penScoreMatch = note.match(/(\d+)[-–](\d+)\s*(?:on\s+)?(?:pen|kick|shoot)/i)
+    ?? note.match(/(?:pen|kick|shoot)[^0-9]*(\d+)[-–](\d+)/i)
+  if (penScoreMatch) penScore = `${penScoreMatch[1]}–${penScoreMatch[2]}`
+
+  // Determine winner
+  let penWinner: string | null = null
+  if (penalties) {
+    const celticWon = /celtic\s+(?:win|won|beat)/i.test(note)
+      ? true
+      : /celtic\s+(?:lose|lost|fail)/i.test(note)
+        ? false
+        : penScore
+          ? (() => {
+              const [h, a] = penScore.split('–').map(Number)
+              return match.home === 'Celtic' ? h > a : a > h
+            })()
+          : null
+    if (celticWon === true) penWinner = 'Celtic'
+    else if (celticWon === false) penWinner = match.home === 'Celtic' ? match.away : match.home
+  }
+
+  return { aet, penalties, penScore, penWinner }
+}
+
 function formatFullDate(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -636,6 +675,7 @@ export function HistoricalMatch() {
   const venue = match.home === 'Celtic' ? 'H' : 'A'
   const celticScore = match.home === 'Celtic' ? match.homeScore : match.awayScore
   const oppScore   = match.home === 'Celtic' ? match.awayScore  : match.homeScore
+  const outcome = parseMatchOutcome(match.tableNote, match)
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
@@ -699,13 +739,27 @@ export function HistoricalMatch() {
             <div className="font-bold font-mono tabular-nums" style={{ color: resultColor, fontSize: '3rem', lineHeight: 1 }}>
               {match.homeScore}–{match.awayScore}
             </div>
+            {outcome.penalties && outcome.penScore && (
+              <div className="font-mono font-bold tabular-nums" style={{ color: 'var(--color-ink-muted)', fontSize: '1rem', marginTop: 4 }}>
+                {outcome.penScore} on pens
+              </div>
+            )}
+            {outcome.aet && !outcome.penalties && (
+              <div style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem', marginTop: 4 }}>
+                After extra time
+              </div>
+            )}
             {parsed.attendance && (
               <div style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem', marginTop: 4 }}>
                 Att: {Number(parsed.attendance).toLocaleString('en-GB')}
               </div>
             )}
             <div style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem', marginTop: 2 }}>
-              {resultLabel} · Full time
+              {outcome.penalties
+                ? `${outcome.penWinner ?? 'Unknown'} win on penalties`
+                : outcome.aet
+                  ? `${resultLabel} · Extra time`
+                  : `${resultLabel} · Full time`}
             </div>
           </div>
         )}
