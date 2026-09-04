@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Star } from 'lucide-react'
 import { useMatchNotes } from '../hooks/useMatchNotes'
+import { useFavourites } from '../hooks/useFavourites'
 import { VoiceRecorder } from '../components/VoiceRecorder'
-import { parseTeamsSection } from '../lib/historicalData'
-import type { HistoricalLineup, HistoricalEvent } from '../lib/historicalData'
+import { parseTeamsSection, buildTeamsText, cleanReportText } from '../lib/historicalData'
+import type { HistoricalLineup, HistoricalEvent, HistoricalPlayer } from '../lib/historicalData'
 import type { MatchNotes } from '../hooks/useMatchNotes'
 
 interface HistoricalMatch {
@@ -44,43 +45,98 @@ function resultColors(match: HistoricalMatch) {
 
 // ── Events tab ────────────────────────────────────────────────────────────────
 
-const EVENT_ICONS: Record<HistoricalEvent['type'], string> = {
-  goal: '⚽', ownGoal: '⚽', yellowCard: '🟨', redCard: '🟥',
+const ROW_GRID = '1fr 52px 1fr'
+
+function WikiGoalRow({ ev, score, isAway }: { ev: HistoricalEvent; score: string; isAway: boolean }) {
+  const icon = ev.type === 'ownGoal' ? '⚽' : '⚽'
+  // For away games: Celtic is right column, opponent is left column
+  const onLeft = isAway ? !ev.isCeltic : ev.isCeltic
+  const content = (
+    <div className="flex items-start gap-2" style={{ flexDirection: onLeft ? 'row-reverse' : 'row' }}>
+      <span style={{ fontSize: '0.85rem', lineHeight: 1.5, flexShrink: 0 }}>{icon}</span>
+      <div style={{ textAlign: onLeft ? 'right' : 'left' }}>
+        <span style={{ fontSize: '0.82rem', color: ev.isCeltic ? 'var(--color-ink)' : 'var(--color-ink-secondary)' }}>
+          {ev.player}
+          {ev.type === 'ownGoal' && <span style={{ fontSize: '0.68rem', color: 'var(--color-ink-faint)' }}> (OG)</span>}
+        </span>
+      </div>
+    </div>
+  )
+  return (
+    <div className="grid items-center py-1.5" style={{ gridTemplateColumns: ROW_GRID }}>
+      <div className="flex" style={{ justifyContent: 'flex-end' }}>{onLeft ? content : null}</div>
+      <div className="text-center">
+        {ev.minute != null && (
+          <div className="font-mono" style={{ fontSize: '0.62rem', color: 'var(--color-ink-faint)' }}>{ev.minute}'</div>
+        )}
+        <div className="font-mono font-bold tabular-nums" style={{ fontSize: '0.78rem', color: 'var(--color-accent)' }}>{score}</div>
+      </div>
+      <div className="flex" style={{ justifyContent: 'flex-start' }}>{!onLeft ? content : null}</div>
+    </div>
+  )
 }
 
-export function WikiEventsDisplay({ events, celticName, opponentName }: {
+function WikiCardRow({ ev, isAway }: { ev: HistoricalEvent; isAway: boolean }) {
+  const icon = ev.type === 'redCard' ? '🟥' : '🟨'
+  const onLeft = isAway ? !ev.isCeltic : ev.isCeltic
+  const content = (
+    <div className="flex items-center gap-2" style={{ flexDirection: onLeft ? 'row-reverse' : 'row' }}>
+      <span style={{ fontSize: '0.8rem', flexShrink: 0 }}>{icon}</span>
+      <span style={{ fontSize: '0.82rem', color: ev.isCeltic ? 'var(--color-ink)' : 'var(--color-ink-secondary)', textAlign: onLeft ? 'right' : 'left' }}>
+        {ev.player}
+      </span>
+    </div>
+  )
+  return (
+    <div className="grid items-center py-1" style={{ gridTemplateColumns: ROW_GRID }}>
+      <div className="flex" style={{ justifyContent: 'flex-end' }}>{onLeft ? content : null}</div>
+      <div className="text-center font-mono" style={{ fontSize: '0.62rem', color: 'var(--color-ink-faint)' }}>
+        {ev.minute != null ? `${ev.minute}'` : ''}
+      </div>
+      <div className="flex" style={{ justifyContent: 'flex-start' }}>{!onLeft ? content : null}</div>
+    </div>
+  )
+}
+
+export function WikiEventsDisplay({ events, celticName, opponentName, isAway = false }: {
   events: HistoricalEvent[]
   celticName: string
   opponentName: string
+  isAway?: boolean
 }) {
   if (!events.length) return null
+
+  // Compute running score for goals — always in home–away order
+  let celticGoals = 0, oppGoals = 0
+  const scoreAtGoal = new Map<HistoricalEvent, string>()
+  for (const ev of events) {
+    if (ev.type === 'goal' || ev.type === 'ownGoal') {
+      if ((ev.type === 'goal' && ev.isCeltic) || (ev.type === 'ownGoal' && !ev.isCeltic)) celticGoals++
+      else oppGoals++
+      // Score displayed as home–away: for home matches Celtic is home; for away matches opp is home
+      scoreAtGoal.set(ev, isAway ? `${oppGoals}–${celticGoals}` : `${celticGoals}–${oppGoals}`)
+    }
+  }
+
+  // Column headers: left is home team, right is away team
+  const leftName = isAway ? opponentName : celticName
+  const rightName = isAway ? celticName : opponentName
+
   return (
-    <div>
-      <div className="flex justify-between mb-2 px-1" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
-        <span>{celticName}</span>
-        <span>{opponentName}</span>
+    <div className="rounded border px-3 py-1" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+      <div className="flex justify-between pb-1 mb-1" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+        <span style={{ fontSize: '0.65rem', color: isAway ? 'var(--color-ink-muted)' : 'var(--color-accent)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {leftName}
+        </span>
+        <span style={{ fontSize: '0.65rem', color: isAway ? 'var(--color-accent)' : 'var(--color-ink-muted)', fontWeight: isAway ? 600 : undefined, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {rightName}
+        </span>
       </div>
-      <div className="space-y-1">
-        {events.map((ev, i) => (
-          <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded" style={{ backgroundColor: 'var(--color-surface)' }}>
-            {ev.isCeltic ? (
-              <>
-                <span style={{ fontSize: '0.75rem' }}>{EVENT_ICONS[ev.type]}</span>
-                <span style={{ color: 'var(--color-ink)', fontSize: '0.85rem' }}>{ev.player}</span>
-                {ev.type === 'ownGoal' && <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>(og)</span>}
-                <span className="ml-auto font-mono" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>{ev.minute != null ? `${ev.minute}'` : ''}</span>
-              </>
-            ) : (
-              <>
-                <span className="font-mono" style={{ color: 'var(--color-ink-faint)', fontSize: '0.75rem' }}>{ev.minute != null ? `${ev.minute}'` : ''}</span>
-                <span className="ml-auto" style={{ color: 'var(--color-ink)', fontSize: '0.85rem' }}>{ev.player}</span>
-                {ev.type === 'ownGoal' && <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>(og)</span>}
-                <span style={{ fontSize: '0.75rem' }}>{EVENT_ICONS[ev.type]}</span>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
+      {events.map((ev, i) =>
+        ev.type === 'goal' || ev.type === 'ownGoal'
+          ? <WikiGoalRow key={i} ev={ev} score={scoreAtGoal.get(ev)!} isAway={isAway} />
+          : <WikiCardRow key={i} ev={ev} isAway={isAway} />
+      )}
     </div>
   )
 }
@@ -95,99 +151,206 @@ export function WikiLineupsDisplay({ celtic, opponent }: {
   return <LineupsTab celtic={celtic} opponent={opponent} />
 }
 
-function EventsTab({ events, celticName, opponentName }: {
+function EventsTab({ events, celticName, opponentName, isAway }: {
   events: HistoricalEvent[]
   celticName: string
   opponentName: string
+  isAway: boolean
 }) {
   if (!events.length) {
     return <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No events recorded for this match.</p>
   }
-  return <WikiEventsDisplay events={events} celticName={celticName} opponentName={opponentName} />
+  return <WikiEventsDisplay events={events} celticName={celticName} opponentName={opponentName} isAway={isAway} />
 }
 
-const SKIP_REPORT_KEYS = new Set(['trivia', 'review', 'teams', 'articles', 'pictures', 'intro'])
+// Keys to completely hide from the Report tab
+const SKIP_REPORT_KEYS = new Set([
+  'trivia', 'review', 'teams', 'pictures', 'intro',
+  'forum', 'motm', 'man_of_the_match', 'stats', 'statistics',
+  'lineups', 'lineup', 'squads', 'squad', 'scorers',
+])
+
+// Keys that have digits but are actual content (press articles stored under score-string keys)
+// Any key with a digit that isn't in SKIP_REPORT_KEYS goes into the Press section
+function isPressKey(key: string) {
+  return /\d/.test(key) && !SKIP_REPORT_KEYS.has(key)
+}
+
+const ARTICLE_STUB_RE = /^(match report|audio report|video|watch|listen|read more|see end of page|paradise report)/i
+
+// Parse a block of article text into structured fields
+interface ParsedArticle {
+  title: string | null
+  source: string | null
+  author: string | null
+  dateTime: string | null
+  body: string
+}
+
+function parseArticleText(raw: string): ParsedArticle {
+  const lines = cleanReportText(raw)
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !ARTICLE_STUB_RE.test(l))
+
+  if (!lines.length) return { title: null, source: null, author: null, dateTime: null, body: '' }
+
+  let title: string | null = null
+  let source: string | null = null
+  let author: string | null = null
+  let dateTime: string | null = null
+  const bodyLines: string[] = []
+
+  // The header block is the first few contiguous lines before body text begins.
+  // Body text = longer lines (>120 chars) or lines that follow body text.
+  let headerDone = false
+
+  for (const line of lines) {
+    if (headerDone) { bodyLines.push(line); continue }
+
+    // Author line: starts with "By "
+    if (/^by\s/i.test(line)) { author = line; continue }
+
+    // Date line: starts with "Published" or has HH:MM time pattern
+    if (/^published/i.test(line) || /\b\d{1,2}:\d{2}\b/.test(line)) {
+      dateTime = line.replace(/^published\s+on\s+/i, '').trim()
+      continue
+    }
+
+    // Title: first line, short enough, no trailing full-stop
+    if (!title && line.length < 200 && !/\.\s*$/.test(line)) {
+      title = line
+      continue
+    }
+
+    // Source: short line after title, before author/date
+    if (title && !source && !author && !dateTime && line.length < 80 && !/\.\s*$/.test(line)) {
+      source = line
+      continue
+    }
+
+    // Anything longer or that doesn't fit header structure → body begins
+    headerDone = true
+    bodyLines.push(line)
+  }
+
+  return { title, source, author, dateTime, body: bodyLines.join('\n\n') }
+}
+
+function ArticleCard({ article }: { article: ParsedArticle }) {
+  if (!article.title && !article.body) return null
+  const hasMeta = article.source || article.author || article.dateTime
+  return (
+    <div>
+      {article.title && (
+        <div className="mb-1" style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-ink)', lineHeight: 1.35, overflowWrap: 'break-word' }}>
+          {article.title}
+        </div>
+      )}
+      {hasMeta && (
+        <div className="mb-3 space-y-0.5">
+          {article.source && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-ink-muted)', fontWeight: 600 }}>{article.source}</div>
+          )}
+          {article.author && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--color-ink-faint)' }}>{article.author}</div>
+          )}
+          {article.dateTime && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--color-ink-faint)' }}>{article.dateTime}</div>
+          )}
+        </div>
+      )}
+      {article.body && (
+        <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+          <ReactMarkdown>{article.body}</ReactMarkdown>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function ReportTab({ report }: { report: { sections: Record<string, string> } }) {
   const { sections } = report
-  const keys = ['trivia', 'review', ...Object.keys(sections).filter(k => !SKIP_REPORT_KEYS.has(k))]
-    .filter(k => sections[k])
 
-  if (!keys.length) return (
+  // Narrative keys shown as prose
+  const narrativeKeys = ['trivia', 'review'].filter(k => sections[k])
+
+  // Press: 'articles' key + any section key that contains digits (score-string headings)
+  // These hold newspaper match reports saved under keys like "dunfermline_0_-_3_celtic:"
+  const pressTexts: string[] = []
+  if (sections.articles) {
+    const cleaned = cleanReportText(sections.articles)
+      .split('\n').filter(l => !ARTICLE_STUB_RE.test(l.trim())).join('\n').trim()
+    if (cleaned) pressTexts.push(cleaned)
+  }
+  for (const k of Object.keys(sections)) {
+    if (isPressKey(k) && sections[k]?.trim()) pressTexts.push(sections[k])
+  }
+
+  const pressArticles = pressTexts.map(parseArticleText).filter(a => a.title || a.body)
+
+  if (!narrativeKeys.length && !pressArticles.length) return (
     <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No report text available.</p>
   )
 
   const labels: Record<string, string> = { trivia: 'Trivia', review: 'Match Report' }
+  const sectionLabel = (key: string) => labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   return (
     <div className="space-y-5">
-      {keys.map(key => (
+      {narrativeKeys.map(key => (
         <div key={key}>
           <div className="mb-1.5" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
-            {labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+            {sectionLabel(key)}
           </div>
           <div className="report-prose" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
             <ReactMarkdown>{sections[key]}</ReactMarkdown>
           </div>
         </div>
       ))}
+      {pressArticles.length > 0 && (
+        <div>
+          <div className="mb-2" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}>
+            Press
+          </div>
+          <div className="space-y-5">
+            {pressArticles.map((article, i) => <ArticleCard key={i} article={article} />)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 // ── Lineups tab ───────────────────────────────────────────────────────────────
 
-function LineupColumn({ lineup, align }: { lineup: HistoricalLineup; align: 'left' | 'right' }) {
-  const starters = lineup.players.filter(p => p.starter)
-  const subs = lineup.players.filter(p => !p.starter)
-
-  const row = (player: (typeof starters)[0], i: number) => (
-    <div
-      key={i}
-      className="flex items-center gap-2 py-1"
-      style={{ flexDirection: align === 'right' ? 'row-reverse' : 'row' }}
-    >
-      <span
-        style={{
-          color: 'var(--color-ink)',
-          fontSize: '0.82rem',
-          textAlign: align,
-          lineHeight: 1.3,
-        }}
-      >
-        {player.name}
-      </span>
-      {player.subbedOff && (
-        <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.65rem' }}>↓{player.subbedOff}'</span>
-      )}
-      {player.subbedOn && (
-        <span style={{ color: 'var(--color-accent)', fontSize: '0.65rem' }}>↑{player.subbedOn}'</span>
-      )}
+function WikiPlayerRow({ player, isCeltic }: { player: HistoricalPlayer; isCeltic: boolean }) {
+  const subbedOff = player.subbedOff != null
+  return (
+    <div className="flex items-center gap-2 py-1" style={{ opacity: subbedOff ? 0.6 : 1 }}>
+      <div className="flex-1 min-w-0">
+        <span style={{ fontSize: '0.82rem', color: isCeltic ? 'var(--color-ink)' : 'var(--color-ink-secondary)' }}>
+          {player.name}
+        </span>
+        {player.subbedOff != null && (
+          <span style={{ fontSize: '0.68rem', color: 'var(--color-ink-faint)', marginLeft: 4 }}>
+            ↓ Off {player.subbedOff}'
+          </span>
+        )}
+        {player.subbedOn != null && (
+          <span style={{ fontSize: '0.68rem', color: 'var(--color-accent)', marginLeft: 4 }}>
+            ↑ On {player.subbedOn}'
+          </span>
+        )}
+      </div>
     </div>
   )
+}
 
+function WikiSectionHeading({ text }: { text: string }) {
   return (
-    <div style={{ flex: 1 }}>
-      <div
-        className="mb-1.5 text-center"
-        style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-faint)', fontWeight: 500 }}
-      >
-        {lineup.teamName}
-      </div>
-      <div style={{ textAlign: align }}>
-        {starters.map((p, i) => row(p, i))}
-        {subs.length > 0 && (
-          <>
-            <div className="my-2" style={{ height: 1, backgroundColor: 'var(--color-border-subtle)' }} />
-            {subs.map((p, i) => row(p, i + 100))}
-          </>
-        )}
-        {lineup.subsNotUsed.length > 0 && (
-          <div className="mt-2" style={{ color: 'var(--color-ink-faint)', fontSize: '0.72rem', textAlign: align }}>
-            Not used: {lineup.subsNotUsed.join(', ')}
-          </div>
-        )}
-      </div>
+    <div className="mt-3 mb-1" style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-ink-faint)' }}>
+      {text}
     </div>
   )
 }
@@ -197,11 +360,59 @@ function LineupsTab({ celtic, opponent }: { celtic: HistoricalLineup | null; opp
     return <p className="text-center py-10 m-0" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>No lineup data available for this match.</p>
   }
 
+  const celticStarters  = celtic?.players.filter(p => p.starter) ?? []
+  const celticSubsUsed  = celtic?.players.filter(p => !p.starter && p.subbedOn != null) ?? []
+  const celticUnused    = celtic?.players.filter(p => !p.starter && p.subbedOn == null) ?? []
+  const oppStarters     = opponent?.players.filter(p => p.starter) ?? []
+  const oppSubsUsed     = opponent?.players.filter(p => !p.starter && p.subbedOn != null) ?? []
+  const oppUnused       = opponent?.players.filter(p => !p.starter && p.subbedOn == null) ?? []
+
   return (
-    <div className="flex gap-4">
-      {celtic && <LineupColumn lineup={celtic} align="left" />}
-      {celtic && opponent && <div style={{ width: 1, backgroundColor: 'var(--color-border-subtle)', flexShrink: 0 }} />}
-      {opponent && <LineupColumn lineup={opponent} align="right" />}
+    <div>
+      {/* Team headers */}
+      <div className="grid grid-cols-2 gap-4">
+        {[celtic, opponent].map((lu, i) => (
+          <div key={i} className="flex items-center justify-between pb-1 mb-1" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+            <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: i === 0 ? 'var(--color-accent)' : 'var(--color-ink-muted)', fontWeight: 600 }}>
+              {lu?.teamName ?? ''}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Starters */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>{celticStarters.map((p, i) => <WikiPlayerRow key={i} player={p} isCeltic />)}</div>
+        <div>{oppStarters.map((p, i) => <WikiPlayerRow key={i} player={p} isCeltic={false} />)}</div>
+      </div>
+
+      {/* Substitutes used */}
+      {(celticSubsUsed.length > 0 || oppSubsUsed.length > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            {celticSubsUsed.length > 0 && <WikiSectionHeading text="Substitutes used" />}
+            {celticSubsUsed.map((p, i) => <WikiPlayerRow key={i} player={p} isCeltic />)}
+          </div>
+          <div>
+            {oppSubsUsed.length > 0 && <WikiSectionHeading text="Substitutes used" />}
+            {oppSubsUsed.map((p, i) => <WikiPlayerRow key={i} player={p} isCeltic={false} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Unused */}
+      {(celticUnused.length > 0 || oppUnused.length > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            {celticUnused.length > 0 && <WikiSectionHeading text="Unused" />}
+            {celticUnused.map((p, i) => <WikiPlayerRow key={i} player={p} isCeltic />)}
+          </div>
+          <div>
+            {oppUnused.length > 0 && <WikiSectionHeading text="Unused" />}
+            {oppUnused.map((p, i) => <WikiPlayerRow key={i} player={p} isCeltic={false} />)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -316,7 +527,12 @@ function MatchTabs({ match, parsed, notes }: {
   notes: MatchNotes
 }) {
   const hasPictures = (match.pictures?.length ?? 0) > 0
-  const hasReport = !!(match.report?.sections && (match.report.sections.review || match.report.sections.trivia || Object.keys(match.report.sections).some(k => !SKIP_REPORT_KEYS.has(k))))
+  const hasReport = !!(match.report?.sections && (
+    match.report.sections.review ||
+    match.report.sections.trivia ||
+    Object.keys(match.report.sections).some(k => isPressKey(k) && match.report!.sections[k]?.trim()) ||
+    (match.report.sections.articles && match.report.sections.articles.trim().length > 30)
+  ))
   const [tab, setTab] = useState<Tab>('events')
 
   const tabs: { key: Tab; label: string }[] = [
@@ -353,7 +569,7 @@ function MatchTabs({ match, parsed, notes }: {
       </div>
 
       <div className="pt-4">
-        {tab === 'events' && <EventsTab events={parsed.events} celticName={celticName} opponentName={oppName} />}
+        {tab === 'events' && <EventsTab events={parsed.events} celticName={celticName} opponentName={oppName} isAway={match.home !== 'Celtic'} />}
         {tab === 'lineups' && <LineupsTab celtic={parsed.celticLineup} opponent={parsed.opponentLineup} />}
         {tab === 'report' && match.report && <ReportTab report={match.report} />}
         {tab === 'pictures' && <PicturesTab pictures={match.pictures ?? []} pictureUrl={match.pictureUrl} />}
@@ -394,6 +610,7 @@ export function HistoricalMatch() {
 
   const notesKey = slug ? `hist:${decodeURIComponent(slug).replace(/\//g, '')}` : undefined
   const notes = useMatchNotes(notesKey)
+  const { isFavourited, toggle: toggleFav } = useFavourites()
 
   if (loading) {
     return (
@@ -414,7 +631,7 @@ export function HistoricalMatch() {
     )
   }
 
-  const parsed = parseTeamsSection(match.report?.sections?.teams ?? '')
+  const parsed = parseTeamsSection(buildTeamsText(match.report?.sections ?? {}))
   const { color: resultColor, bg: resultBg, label: resultLabel } = resultColors(match)
   const opp = opponent(match)
   const venue = match.home === 'Celtic' ? 'H' : 'A'
@@ -437,9 +654,28 @@ export function HistoricalMatch() {
           <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, color: 'var(--color-ink-muted)', background: 'var(--color-border-subtle)', padding: '2px 8px', borderRadius: 4 }}>
             {match.competition}
           </span>
-          <span style={{ marginLeft: 'auto', color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>
-            {venue === 'H' ? 'Celtic Park' : 'Away'}
-          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <span style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>
+              {venue === 'H' ? 'Celtic Park' : 'Away'}
+            </span>
+            <button
+              onClick={() => toggleFav({
+                id: `hist:${match.slug}`,
+                date: match.date,
+                home: match.home,
+                away: match.away,
+                homeScore: match.homeScore,
+                awayScore: match.awayScore,
+                competition: match.competition,
+                path: `/history/match/${encodeURIComponent(match.slug)}`,
+              })}
+              className="border-none cursor-pointer p-0 flex items-center"
+              style={{ background: 'none', color: isFavourited(`hist:${match.slug}`) ? 'var(--color-draw)' : 'var(--color-ink-faint)', lineHeight: 1 }}
+              aria-label={isFavourited(`hist:${match.slug}`) ? 'Remove from starred' : 'Add to starred'}
+            >
+              <Star size={14} fill={isFavourited(`hist:${match.slug}`) ? 'currentColor' : 'none'} strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
 
         <h1 className="font-journal m-0 leading-tight" style={{ color: 'var(--color-ink)', fontSize: '1.5rem' }}>
