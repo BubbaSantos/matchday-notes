@@ -116,8 +116,15 @@ function parseGoalList(str: string, isCeltic: boolean): HistoricalEvent[] {
     if (!player) continue
     const details = m[2].trim()
     const ownGoal = /og|own goal/i.test(details)
-    const minute = parseMinute(details)
-    events.push({ type: ownGoal ? 'ownGoal' : 'goal', player, minute, isCeltic })
+    // Handle brace scorers: "14' minutes, 41' minutes" — split into separate events
+    const minuteParts = details.split(',').map(p => p.trim()).filter(p => /\d/.test(p))
+    if (minuteParts.length > 1) {
+      for (const part of minuteParts) {
+        events.push({ type: ownGoal ? 'ownGoal' : 'goal', player, minute: parseMinute(part), isCeltic })
+      }
+    } else {
+      events.push({ type: ownGoal ? 'ownGoal' : 'goal', player, minute: parseMinute(details), isCeltic })
+    }
   }
   // Fallback: names without minutes
   if (!events.length) {

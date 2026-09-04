@@ -120,10 +120,18 @@ function parseGoalList(str, isCeltic) {
     if (!player) continue
     const details = m[2].trim()
     const ownGoal = /og|own goal/i.test(details)
-    const stoppage = details.match(/(\d+)[+''\-]+(\d+)/)
-    const n = stoppage ? parseInt(stoppage[1]) + parseInt(stoppage[2]) : parseInt(details.replace(/[^0-9]/g, ''))
-    const minute = isNaN(n) ? null : n
-    events.push({ type: ownGoal ? 'ownGoal' : 'goal', player, minute, isCeltic })
+    const minuteParts = details.split(',').map(p => p.trim()).filter(p => /\d/.test(p))
+    if (minuteParts.length > 1) {
+      for (const part of minuteParts) {
+        const stoppage = part.match(/(\d+)[+''\-]+(\d+)/)
+        const n = stoppage ? parseInt(stoppage[1]) + parseInt(stoppage[2]) : parseInt(part.replace(/[^0-9]/g, ''))
+        events.push({ type: ownGoal ? 'ownGoal' : 'goal', player, minute: isNaN(n) ? null : n, isCeltic })
+      }
+    } else {
+      const stoppage = details.match(/(\d+)[+''\-]+(\d+)/)
+      const n = stoppage ? parseInt(stoppage[1]) + parseInt(stoppage[2]) : parseInt(details.replace(/[^0-9]/g, ''))
+      events.push({ type: ownGoal ? 'ownGoal' : 'goal', player, minute: isNaN(n) ? null : n, isCeltic })
+    }
   }
   if (!events.length) {
     for (const p of str.split(',')) {
