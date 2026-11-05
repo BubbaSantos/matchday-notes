@@ -233,15 +233,19 @@ export function History() {
       .catch(() => { setError('Could not load history index'); setLoadingIndex(false) })
   }, [])
 
-  // Load year data when year param changes
+  // Load year data when year param changes (filter out deleted matches)
   useEffect(() => {
     if (!year) { setMatches(null); return }
     setLoadingMatches(true)
     setMatches(null)
-    fetch(`/history/${year}.json`)
-      .then(r => { if (!r.ok) throw new Error('Not found'); return r.json() })
-      .then(data => { setMatches(data); setLoadingMatches(false) })
-      .catch(() => { setError(`No data for ${year}`); setLoadingMatches(false) })
+    Promise.all([
+      fetch(`/history/${year}.json`).then(r => { if (!r.ok) throw new Error('Not found'); return r.json() }),
+      fetch('/api/notes?kind=deleted-slugs').then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([data, deleted]: [HistoricalMatch[], string[]]) => {
+      const deletedSet = new Set(deleted)
+      setMatches(data.filter((m: HistoricalMatch) => !deletedSet.has(m.slug.replace(/^\//, ''))))
+      setLoadingMatches(false)
+    }).catch(() => { setError(`No data for ${year}`); setLoadingMatches(false) })
   }, [year])
 
   const yearNum = year ? parseInt(year) : null

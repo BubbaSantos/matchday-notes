@@ -5,7 +5,8 @@ import { useFixtures } from '../hooks/useFixtures'
 import { FixtureCard } from '../components/FixtureCard'
 import { LeagueTable } from '../components/LeagueTable'
 import { fetchLeagueTable } from '../lib/table'
-import { seasonToYears } from '../lib/historicalData'
+import { seasonToYears, normaliseCompetition } from '../lib/historicalData'
+import { CompetitionBadge } from '../components/CompetitionBadge'
 import type { Competition, LeagueStanding, TableRow } from '../types'
 
 type Filter = 'all' | Competition
@@ -69,9 +70,7 @@ function HistoricalFixtureCard({ match, isLast }: { match: HistoricalMatch; isLa
           <div className="flex items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1.5">
-                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-ink-muted)', fontWeight: 500 }}>
-                  {match.competition}
-                </span>
+                <CompetitionBadge competition={normaliseCompetition(match.competition)} />
                 <span className="flex items-center gap-1 ml-auto" style={{ color: 'var(--color-ink-faint)', fontSize: '0.7rem' }}>
                   {isHome ? 'Celtic Park' : 'Away'}
                 </span>
@@ -139,16 +138,18 @@ export function Home() {
     Promise.all([
       fetch(`/history/${startYear}.json`).then(r => r.ok ? r.json() : []).catch(() => []),
       fetch(`/history/${endYear}.json`).then(r => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([startData, endData]: [HistoricalMatch[], HistoricalMatch[]]) => {
+      fetch('/api/notes?kind=deleted-slugs').then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([startData, endData, deleted]: [HistoricalMatch[], HistoricalMatch[], string[]]) => {
+      const deletedSet = new Set(deleted)
       // From startYear: July–December matches
       const fromStart = startData.filter(m => {
-        if (!m.date) return false
+        if (!m.date || deletedSet.has(m.slug.replace(/^\//, ''))) return false
         const mo = new Date(m.date).getMonth() + 1
         return mo >= 7
       })
       // From endYear: January–June matches
       const fromEnd = endData.filter(m => {
-        if (!m.date) return false
+        if (!m.date || deletedSet.has(m.slug.replace(/^\//, ''))) return false
         const mo = new Date(m.date).getMonth() + 1
         return mo < 7
       })
@@ -189,50 +190,63 @@ export function Home() {
   const past = filtered
     .filter((m) => m.phase === 'post')
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()) // newest first
-  const currentSeasonCount = past.filter((m) => getSeason(m.kickoff) === currentSeasonLabel).length
 
-  // All seasons: Sofascore seasons + historical football seasons from wiki index
+  // Historical competitions (derived from loaded wiki matches)
+  const histCompetitions = useMemo<Competition[]>(
+    () => Array.from(new Set((histMatches ?? []).map(m => normaliseCompetition(m.competition)))),
+    [histMatches]
+  )
+  const filteredHistMatches = useMemo(
+    () => !histMatches ? null
+      : filter === 'all' ? histMatches
+      : histMatches.filter(m => normaliseCompetition(m.competition) === filter),
+    [histMatches, filter]
+  )
+  // Season list: use Sofascore when it has substantial coverage (≥25 played games),
+  // otherwise fall back to wiki (handles partial Sofascore scrapes for older seasons).
   const seasons = useMemo(() => {
-    const sofaSeasons = new Set<string>()
-    for (const m of past) sofaSeasons.add(getSeason(m.kickoff))
-
-    const allSeasons = [...sofaSeasons]
-
-    if (histIndex) {
-      // Earliest Sofascore season start year
-      const earliestSofaStart = Math.min(...[...sofaSeasons].map(s => parseInt(s)))
-      // Derive football seasons from wiki year index
-      const wikiYears = new Set(histIndex.map(y => y.year))
-      const wikiSeasons = new Set<string>()
-      for (const y of wikiYears) {
-        // Year Y contributes Jul-Dec to season Y-(Y+1)
-        if (wikiYears.has(y + 1) || y + 1 <= new Date().getFullYear()) {
-          const label = `${y}-${String(y + 1).slice(-2)}`
-          wikiSeasons.add(label)
-        }
-        // Year Y contributes Jan-Jun to season (Y-1)-Y
-        if (wikiYears.has(y - 1)) {
-          const label = `${y - 1}-${String(y).slice(-2)}`
-          wikiSeasons.add(label)
-        }
-      }
-      // Only include wiki seasons that predate Sofascore coverage
-      for (const s of [...wikiSeasons].sort((a, b) => parseInt(b) - parseInt(a))) {
-        if (parseInt(s) < earliestSofaStart) allSeasons.push(s)
+    // Count played Sofascore fixtures per season (use all fixtures, not the filtered slice)
+    const sofaCounts = new Map<string, number>()
+    for (const m of fixtures) {
+      if (m.phase === 'post') {
+        const s = getSeason(m.kickoff)
+        sofaCounts.set(s, (sofaCounts.get(s) ?? 0) + 1)
       }
     }
 
+    const wikiSeasonSet = new Set<string>()
+    if (histIndex) {
+      const wikiYears = new Set(histIndex.map(y => y.year))
+      for (const y of wikiYears) {
+        if (wikiYears.has(y + 1) || y + 1 <= new Date().getFullYear()) {
+          wikiSeasonSet.add(`${y}-${String(y + 1).slice(-2)}`)
+        }
+      }
+    }
+
+    const allSeasons: string[] = []
+    // Sofascore seasons with substantial coverage (≥25 games) take priority
+    for (const [s, count] of sofaCounts) {
+      if (count >= 25) allSeasons.push(s)
+    }
+    // Wiki seasons where Sofascore is absent or thin
+    for (const s of wikiSeasonSet) {
+      const startYear = parseInt(s)
+      const sofaEquiv = `${startYear}–${String(startYear + 1).slice(-2)}`
+      if ((sofaCounts.get(sofaEquiv) ?? 0) < 25) allSeasons.push(s)
+    }
+    allSeasons.sort((a, b) => parseInt(b) - parseInt(a))
     return allSeasons
-  }, [past, histIndex])
+  }, [fixtures, histIndex])
 
   const seasonFixtures = past.filter((m) => getSeason(m.kickoff) === selectedSeason)
 
-  // If upcoming is empty (e.g. end of season) and we haven't manually picked a section, switch to played
+  // If on upcoming tab but there's nothing upcoming (or viewing a past season), switch to played
   useEffect(() => {
-    if (!loading && upcoming.length === 0 && past.length > 0) {
+    if (!loading && section === 'upcoming' && (upcoming.length === 0 || selectedSeason !== currentSeasonLabel)) {
       setSection('played')
     }
-  }, [loading, upcoming.length, past.length])
+  }, [loading, section, upcoming.length, selectedSeason, currentSeasonLabel])
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
@@ -289,10 +303,10 @@ export function Home() {
       {standing && <StandingRow standing={standing} />}
 
       {/* Filters */}
-      {!loading && competitions.length > 0 && (
+      {!loading && (isHistorical ? histCompetitions.length > 1 : competitions.length > 0) && (
         <div className="flex flex-wrap gap-1.5 mb-7">
           <FilterChip label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
-          {competitions.map((c) => (
+          {(isHistorical ? histCompetitions : competitions).map((c) => (
             <FilterChip
               key={c}
               label={shortName(c)}
@@ -319,20 +333,22 @@ export function Home() {
           style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
         >
           <div className="flex gap-0">
-            <SectionTab
-              label="Upcoming"
-              count={upcoming.length}
-              active={section === 'upcoming'}
-              onClick={() => setSection('upcoming')}
-            />
+            {selectedSeason === currentSeasonLabel && upcoming.length > 0 && (
+              <SectionTab
+                label="Upcoming"
+                count={upcoming.length}
+                active={section === 'upcoming'}
+                onClick={() => setSection('upcoming')}
+              />
+            )}
             <SectionTab
               label="Played"
-              count={section === 'played' ? seasonFixtures.length : currentSeasonCount}
+              count={isHistorical ? (filteredHistMatches?.length ?? 0) : seasonFixtures.length}
               active={section === 'played'}
               onClick={() => setSection('played')}
             />
           </div>
-          {section === 'played' && seasons.length > 1 && (
+          {seasons.length > 1 && (
             <SeasonPicker seasons={seasons} value={selectedSeason} onChange={setSelectedSeason} />
           )}
         </div>
@@ -363,13 +379,13 @@ export function Home() {
                   <div key={i} className="rounded-lg h-16 animate-pulse" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
                 ))}
               </div>
-            ) : histMatches && histMatches.length > 0 ? (
-              histMatches.map((m, i) => (
-                <HistoricalFixtureCard key={m.slug} match={m} isLast={i === histMatches.length - 1} />
+            ) : filteredHistMatches && filteredHistMatches.length > 0 ? (
+              filteredHistMatches.map((m, i) => (
+                <HistoricalFixtureCard key={m.slug} match={m} isLast={i === filteredHistMatches.length - 1} />
               ))
             ) : (
               <p className="text-center py-12" style={{ color: 'var(--color-ink-faint)', fontSize: '0.875rem' }}>
-                No matches found for {selectedSeason}.
+                No matches found for {selectedSeason}{filter !== 'all' ? ` · ${filter}` : ''}.
               </p>
             )
           ) : (
@@ -404,10 +420,6 @@ function SeasonPicker({
   value: string
   onChange: (season: string) => void
 }) {
-  // Split into Sofascore seasons (en-dash "YYYY–YY") and historical wiki seasons (hyphen "YYYY-YY")
-  const recent   = seasons.filter(s => s.includes('–'))
-  const historic = seasons.filter(s => /^\d{4}-\d{2}$/.test(s)).sort((a, b) => Number(b) - Number(a))
-
   return (
     <div className="relative mb-2" style={{ flexShrink: 0 }}>
       <select
@@ -421,12 +433,7 @@ function SeasonPicker({
           fontFamily: 'inherit',
         }}
       >
-        {recent.map((s) => <option key={s} value={s}>{s}</option>)}
-        {historic.length > 0 && (
-          <optgroup label="── Historical ──">
-            {historic.map((s) => <option key={s} value={s}>{s}</option>)}
-          </optgroup>
-        )}
+        {seasons.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
       <ChevronDown
         size={12}

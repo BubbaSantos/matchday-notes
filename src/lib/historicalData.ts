@@ -34,6 +34,7 @@ export interface HistoricalPlayer {
 
 export interface HistoricalLineup {
   teamName: string
+  manager?: string
   players: HistoricalPlayer[]
   subsNotUsed: string[]
 }
@@ -80,12 +81,17 @@ export function seasonToYears(label: string): [number, number] {
 import type { Competition } from '../types'
 
 const COMPETITION_MAP: [RegExp, Competition][] = [
-  [/premiership|spl|premier division|premier league/i, 'Scottish Premiership'],
-  [/scottish cup/i, 'Scottish Cup'],
-  [/league cup|sc.*cup/i, 'League Cup'],
-  [/champions league|european cup|champions cup/i, 'Champions League'],
-  [/europa conference/i, 'Europa Conference League'],
-  [/europa league|uefa cup|cup winners/i, 'Europa League'],
+  // Scottish league — many era names: "SP", "SPL", "Premier Division", "League Division 1", etc.
+  [/^\s*sp\s*$|^\s*sp\s*[-–]/i,                    'Scottish Premiership'],
+  [/premiership|^spl$|spl\s|premier division/i,     'Scottish Premiership'],
+  [/premier league|league division|division 1/i,    'Scottish Premiership'],
+  // Cup competitions
+  [/scottish cup/i,                                 'Scottish Cup'],
+  [/league cup|skol|cis cup/i,                      'League Cup'],
+  // European — order matters: conference before europa, european cup / CL before EL
+  [/champions league|european cup|champions cup/i,  'Champions League'],
+  [/europa conference|conference league/i,          'Europa Conference League'],
+  [/europa league|uefa cup|cup winners|ecwc/i,      'Europa League'],
 ]
 
 export function normaliseCompetition(raw: string): Competition {
